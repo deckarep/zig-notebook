@@ -1,0 +1,8 @@
+.{
+    .name = "shadergui",
+    .version = "0.0.1",
+
+    .dependencies = .{
+        // no zon deps for now.
+    }
+}
