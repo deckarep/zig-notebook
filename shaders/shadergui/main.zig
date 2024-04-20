@@ -93,10 +93,11 @@ var shaderLoadInterval: usize = 0;
 // Note: I found this on Github, I can't seem to use variadic args in Zig with Raylib's TraceCallback for some reason.
 // However, I still want to sniff the errors coming out of here and selectively handle some of them.
 var shaderLoadHasErrors: bool = false;
-fn CustomLog(msgType: c_int, text: [*c]const u8, args: [*c]c.struct___va_list_tag) callconv(.C) void {
+
+fn CustomLog(msgType: c_int, text: [*c]const u8, args: [*c]c.struct___va_list_tag_1) callconv(.C) void {
     var timeStr: [64]u8 = undefined;
     var now = c.time(null);
-    var tm_info = c.localtime(&now);
+    const tm_info = c.localtime(&now);
 
     _ = c.strftime(&timeStr, @sizeOf(@TypeOf(timeStr)), "%Y-%m-%d %H:%M:%S", tm_info);
     _ = c.printf("[%s] ", &timeStr);
@@ -134,7 +135,7 @@ fn update() void {
             std.log.debug("shader v{d} successfully swapped!", .{shaderLoadInterval});
         } else {
             std.log.err("shader v{d} unsuccessful - keeping original", .{shaderLoadInterval});
-            std.os.exit(0);
+            std.posix.exit(0);
         }
     }
 

@@ -1,5 +1,4 @@
 const std = @import("std");
-const Build = std.build;
 
 pub fn build(b: *std.Build) void {
     // Standard target options allows the person running `zig build` to choose
@@ -19,7 +18,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    exe.addObjectFile(Build.LazyPath.relative("../../lib/raylib-5.0-macos/lib/libraylib.a"));
+    exe.addObjectFile(.{ .path = "../../lib/raylib-5.0-macos/lib/libraylib.a"});
 
     exe.linkFramework("CoreVideo");
     exe.linkFramework("IOKit");
@@ -43,13 +42,13 @@ pub fn build(b: *std.Build) void {
     };
 
     exe.addCSourceFile(.{
-        .file = Build.LazyPath.relative("../../lib/raygui/lib/raygui_impl.c"),
+        .file = .{ .path = "../../lib/raygui/lib/raygui_impl.c"},
         .flags = cflags,
     });
 
     // Raylib 5.0.
-    exe.addIncludePath(Build.LazyPath.relative("../../lib/raylib-5.0-macos/include"));
-    exe.addIncludePath(Build.LazyPath.relative("../../lib/raygui/include"));
+    exe.addIncludePath(.{ .path = "../../lib/raylib-5.0-macos/include"});
+    exe.addIncludePath(.{ .path = "../../lib/raygui/include"});
 
     b.installArtifact(exe);
 

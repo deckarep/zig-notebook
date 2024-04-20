@@ -3,6 +3,11 @@ A repository to mess around in the Zig language - try things out, record notes, 
 
 ## List of Projects
 
+### Zig Patterns
+  * Comptime Interfaces
+  * Foo
+  * Bar
+
 ### ShaderGui
 
 This demo shows off Raylib 5.0, GLSL 330 shaders, and a Zig implementation of the Fast Fourier Transform (FFT).
