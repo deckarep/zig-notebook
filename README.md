@@ -2,6 +2,8 @@
 A repository to mess around in the Zig language - try things out, record notes, etc.
 
 ## List of Projects
+Built and test on Zig 0.12 on MacOS. 
+Please send patch if you'd like to see this working on another platform!
 
 ### Zig Patterns
   * Comptime Interfaces
