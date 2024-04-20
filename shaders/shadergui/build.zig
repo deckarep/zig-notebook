@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    exe.addObjectFile(.{ .path = "../../lib/raylib-5.0-macos/lib/libraylib.a"});
+    exe.addObjectFile(.{ .path = "../../lib/raylib-5.0-macos/lib/libraylib.a" });
 
     exe.linkFramework("CoreVideo");
     exe.linkFramework("IOKit");
@@ -42,13 +42,13 @@ pub fn build(b: *std.Build) void {
     };
 
     exe.addCSourceFile(.{
-        .file = .{ .path = "../../lib/raygui/lib/raygui_impl.c"},
+        .file = .{ .path = "../../lib/raygui/lib/raygui_impl.c" },
         .flags = cflags,
     });
 
     // Raylib 5.0.
-    exe.addIncludePath(.{ .path = "../../lib/raylib-5.0-macos/include"});
-    exe.addIncludePath(.{ .path = "../../lib/raygui/include"});
+    exe.addIncludePath(.{ .path = "../../lib/raylib-5.0-macos/include" });
+    exe.addIncludePath(.{ .path = "../../lib/raygui/include" });
 
     b.installArtifact(exe);
 

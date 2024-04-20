@@ -66,7 +66,6 @@ pub fn main() !void {
     defer c.UnloadTexture(zigLogoWhite);
     fft.FFT_Analyzer.reset();
 
-
     // Load Shaders
     dotShader = c.LoadShader(0, "../../resources/shaders/dots.fs");
     defer c.UnloadShader(dotShader);
