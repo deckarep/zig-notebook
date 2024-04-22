@@ -34,6 +34,7 @@ var initialState = .Start;
 var bleedOut: f32 = 120.0;
 
 pub fn main() !void {
+    std.log.info("All your codebase are belong to us.", .{});
     visualizer();
 }
 

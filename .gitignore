@@ -4,3 +4,5 @@
 # Zig specific
 zig-cache
 zig-out
+main
+main.dSYM

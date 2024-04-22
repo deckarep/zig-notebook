@@ -16,6 +16,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "main.zig" },
         .target = target,
         .optimize = optimize,
+        // These two bools, disable llvm/lld and use the faster debug builder.
+        // To see this enabled must pass Debug flag: zig build run -Doptimize=Debug
+        .use_llvm = false, 
+        .use_lld = false,
     });
 
     exe.addObjectFile(.{ .path = "../../lib/raylib-5.0-macos/lib/libraylib.a" });
