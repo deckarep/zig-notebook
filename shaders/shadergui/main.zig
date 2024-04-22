@@ -2,6 +2,7 @@ const std = @import("std");
 pub const c = @import("c_defs.zig").c;
 const utils = @import("utils.zig");
 const fft = @import("fft.zig");
+const circBuf = @import("circle_buffer.zig").CircBuf;
 
 const WinWidth = 1280;
 const WinHeight = 768;
@@ -33,6 +34,10 @@ var initialState = .Start;
 var bleedOut: f32 = 120.0;
 
 pub fn main() !void {
+    visualizer();
+}
+
+fn visualizer() void {
     c.SetConfigFlags(c.FLAG_VSYNC_HINT);
     c.InitWindow(WinWidth, WinHeight, "All your codebase are belong to us.");
     utils.rlCenterWin(WinWidth, WinHeight);
@@ -105,6 +110,7 @@ fn CustomLog(msgType: c_int, text: [*c]const u8, args: [*c]c.struct___va_list_ta
         c.LOG_INFO => _ = c.printf("[INFO] : "),
         c.LOG_ERROR => _ = c.printf("[ERROR]: "),
         c.LOG_WARNING => {
+            // This nonsense is to detect shader load errors, Raylib doesn't really expose error checking otherwise.
             const slice: []const u8 = text[0..7];
             if (std.mem.indexOf(u8, slice, "SHADER")) |idx| {
                 std.log.debug("PROBLEM COMPILING SHADER!!!!", .{});
@@ -234,6 +240,7 @@ fn renderFFT(bottomY: c_int, height: c_int) void {
     const xSpacing = 40;
     const full_degrees: f32 = 360.0 / @as(f32, @floatFromInt(frames));
 
+    // This translation was just to slightly shifter over the FFT bars.
     c.rlPushMatrix();
     defer c.rlPopMatrix();
     c.rlTranslatef(-20, 0, 0);

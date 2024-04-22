@@ -1,23 +1,76 @@
 const std = @import("std");
 const c = @import("c_defs.zig").c;
+const circBuf = @import("circle_buffer.zig").CircBuf;
 
 // Original credit: @Tsoding
 // Zig version: @deckarep - Ralph Caraveo: https://github.com/tsoding/musializer/blob/master/src/plug.c
 
-// Should be a power of 2.
+const copyStyle = enum {
+    memmove,
+    copyForwards,
+    circularBuf,
+};
+
+const selectedCopyStyle = .circularBuf;
+
+// Should be a power of 2: 9 is safe so far.
 pub const FFT_SIZE = 1 << 9; // Good enough, CPU is low.
 
-// FFT Analyzer
-var out_raw: [FFT_SIZE]std.math.Complex(f32) = undefined;
+// FFT Analyzer data - aligning all of them to start on a cache line.
+const CACHE_LINE_SIZE_BYTES = 8;
+var out_raw: [FFT_SIZE]std.math.Complex(f32) align(CACHE_LINE_SIZE_BYTES) = undefined;
+var in_raw: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
+var in_raw_circBuf = circBuf(f32, FFT_SIZE){
+    .items = undefined,
+};
+var in_win: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
+var out_log: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
+var out_smooth: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
+var out_smear: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
 
-var in_raw: [FFT_SIZE]f32 = undefined;
-var in_win: [FFT_SIZE]f32 = undefined;
-var out_log: [FFT_SIZE]f32 = undefined;
-var out_smooth: [FFT_SIZE]f32 = undefined;
-var out_smear: [FFT_SIZE]f32 = undefined;
+// Question: can i align fields of a struct?
+const Foo = struct {
+    a: u32 align(16) = 0x33,
+    b: u8 align(16) = 0xff,
+    c: u64 align(16) = 0xee,
+};
+
+const Bar = struct {
+    a: u32 = 0x33,
+    b: u8 = 0xff,
+    c: u64 = 0xee,
+};
 
 pub const FFT_Analyzer = struct {
     pub fn reset() void {
+        // Left off here.
+        std.debug.print("Foo\n*********\n", .{});
+        const f = Foo{};
+        std.log.debug("foo => {}, @sizeOf(foo) => {d}", .{ f, @sizeOf(Foo) });
+        std.log.debug("f @bitSize(Foo) => {d}", .{@bitSizeOf(Foo)});
+        std.log.debug("@alignOf(Foo.c) => {d}", .{@alignOf(Foo)});
+        std.log.debug("f ptr => {*}", .{&f});
+
+        const b = std.mem.asBytes(&f);
+        std.log.debug("asBytes(Foo) => {s}", .{std.fmt.fmtSliceHexLower(b)});
+
+        std.debug.print("Bar\n*********\n", .{});
+        const bar = Bar{};
+        std.log.debug("bar => {}, @sizeOf(bar) => {d}", .{ bar, @sizeOf(Bar) });
+        std.log.debug("f @bitSize(Bar) => {d}", .{@bitSizeOf(Bar)});
+        std.log.debug("@alignOf(bar.c) => {d}", .{@alignOf(Bar)});
+        std.log.debug("bar ptr => {*}", .{&bar});
+
+        const b1 = std.mem.asBytes(&bar);
+        std.log.debug("asBytes(bar) => {s}", .{std.fmt.fmtSliceHexLower(b1)});
+
+        const total = @sizeOf(Foo) + @sizeOf(Bar);
+        std.log.debug("size of both structs: {d}", .{total});
+
+        const rawData: [*]const u8 = @ptrCast(@alignCast(&f));
+        std.log.debug("size of both structs: {d}", .{std.fmt.fmtSliceHexLower(rawData[0..total])});
+
+        in_raw_circBuf.init();
         fft_clean();
     }
 
@@ -79,22 +132,25 @@ pub const FFT_Analyzer = struct {
     // NOTE: this is burdensom on the CPU when FFT_SIZE is large, this can better scale with
     // a ring-buffer or anything that doesn't have to do so much copying.
     fn push(frame: f32) void {
-        // Doing a "raw c" memmove because Zig doesn't seem to have an equivalent instruction.
-        // I will find another way...you can count on it.
-        // Plus, I don't regard this as -that- performant anyway.
-
-        // NOTE: for large FFT_SIZE, c.memmove actually is more performant vs Zig's copyForwards.
-
-        // CONFIRMED THIS C-Solution works with memmove, causes around ~30% additional cpu
-        // In general when FFT_SIZE is around (1 << 13) in size, memmove is faster and wins.
-        if (false) {
-            const in: [*c]f32 = &in_raw;
-            _ = c.memmove(in, in + 1, (FFT_SIZE - 1) * @sizeOf(f32));
-            in_raw[FFT_SIZE - 1] = frame;
-        } else {
-            // CONFIRMED: this Zig solution works, causes around ~10% additional cpu
-            std.mem.copyForwards(f32, in_raw[0 .. FFT_SIZE - 1], in_raw[1..]);
-            in_raw[FFT_SIZE - 1] = frame;
+        // NOTE: for large FFT_SIZE, c.memmove/circBuf actually is more performant vs Zig's copyForwards.
+        switch (selectedCopyStyle) {
+            .memmove => {
+                // Doing a "raw c" memmove because Zig doesn't seem to have an equivalent instruction.
+                // When FFT size is 13 => 40%
+                const in: [*c]f32 = &in_raw;
+                _ = c.memmove(in, in + 1, (FFT_SIZE - 1) * @sizeOf(f32));
+                in_raw[FFT_SIZE - 1] = frame;
+            },
+            .copyForwards => {
+                // When FFT size is 13 => 100%
+                std.mem.copyForwards(f32, in_raw[0 .. FFT_SIZE - 1], in_raw[1..]);
+                in_raw[FFT_SIZE - 1] = frame;
+            },
+            else => {
+                // When FFT size is 13 => 40%
+                // Circular buf is neck and neck with c.memmove...at least I can get as fast as C.
+                in_raw_circBuf.push(frame);
+            },
         }
     }
 
@@ -106,10 +162,18 @@ pub const FFT_Analyzer = struct {
     // 4. finally, smoothing and smearing out the data.
     pub fn analyze(dt: f32) usize {
         // Apply the Hann Window on the Input - https://en.wikipedia.org/wiki/Hann_function
+        // @Tsoding explanation: https://youtu.be/ivLIov6ta-8
+        // https://download.ni.com/evaluation/pxi/Understanding%20FFTs%20and%20Windowing.pdf
+
+        // NOTE: this is the only spot that touches in_raw (the regular array, or circular buf variant).
         for (0..FFT_SIZE) |i| {
             const t = @as(f32, @floatFromInt(i)) / (FFT_SIZE - 1);
             const hann: f32 = 0.5 - 0.5 * @cos(2 * std.math.pi * t);
-            in_win[i] = in_raw[i] * hann;
+            if (selectedCopyStyle == .circularBuf) {
+                in_win[i] = in_raw_circBuf.atIndex(i) * hann;
+            } else {
+                in_win[i] = in_raw[i] * hann;
+            }
         }
 
         // Invoke the recursive FFT algorithm.
