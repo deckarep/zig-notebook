@@ -28,6 +28,18 @@ var out_log: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
 var out_smooth: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
 var out_smear: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
 
+// Generate the hann window table at comptime.
+const hannTable: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = blk:{
+    @setEvalBranchQuota(FFT_SIZE+1);
+    var tbl: [FFT_SIZE]f32 = undefined;
+    for (0..FFT_SIZE) |i| {
+        const t = @as(f32, @floatFromInt(i)) / (FFT_SIZE - 1);
+        const hann: f32 = 0.5 - 0.5 * @cos(2 * std.math.pi * t);
+        tbl[i] = hann;
+    }
+    break :blk tbl;
+};
+
 // Question: can i align fields of a struct?
 const Foo = struct {
     a: u32 align(16) = 0x33,
@@ -131,8 +143,9 @@ pub const FFT_Analyzer = struct {
     // new data is shifted over by one.
     // NOTE: this is burdensom on the CPU when FFT_SIZE is large, this can better scale with
     // a ring-buffer or anything that doesn't have to do so much copying.
-    fn push(frame: f32) void {
+    inline fn push(frame: f32) void {
         // NOTE: for large FFT_SIZE, c.memmove/circBuf actually is more performant vs Zig's copyForwards.
+        // NOTE: in ReleaseSafe/ReleaseFast Zig - is about ~5% faster than c.memmove.
         switch (selectedCopyStyle) {
             .memmove => {
                 // Doing a "raw c" memmove because Zig doesn't seem to have an equivalent instruction.
@@ -167,12 +180,10 @@ pub const FFT_Analyzer = struct {
 
         // NOTE: this is the only spot that touches in_raw (the regular array, or circular buf variant).
         for (0..FFT_SIZE) |i| {
-            const t = @as(f32, @floatFromInt(i)) / (FFT_SIZE - 1);
-            const hann: f32 = 0.5 - 0.5 * @cos(2 * std.math.pi * t);
             if (selectedCopyStyle == .circularBuf) {
-                in_win[i] = in_raw_circBuf.atIndex(i) * hann;
+                in_win[i] = in_raw_circBuf.atIndex(i) * hannTable[i];
             } else {
-                in_win[i] = in_raw[i] * hann;
+                in_win[i] = in_raw[i] * hannTable[i];
             }
         }
 
