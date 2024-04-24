@@ -78,6 +78,33 @@ fn visualizer() void {
     c.InitAudioDevice();
     c.SetTargetFPS(60);
 
+     // Setup Dear ImGui context
+    const ctx = c.igCreateContext(null);
+    defer c.igDestroyContext(ctx);
+    
+    const ioPtr = c.igGetIO();
+    ioPtr.*.ConfigFlags |= c.ImGuiConfigFlags_NavEnableKeyboard;   // Enable Keyboard Controls
+    ioPtr.*.ConfigFlags |= c.ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+
+    // set docking
+    // #ifdef IMGUI_HAS_DOCK
+    //     ioptr->ConfigFlags |= ImGuiConfigFlags_DockingEnable;       // Enable Docking
+    //     ioptr->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;     // Enable Multi-Viewport / Platform Windows
+    // #endif
+
+    // Setup Dear ImGui style
+    c.igStyleColorsDark(null);
+
+     // Setup Platform/Renderer backends
+    _ = c.ImGui_ImplRaylib_Init();
+    defer c.ImGui_ImplRaylib_Shutdown();
+
+    _ = c.ImFontAtlas_AddFontDefault(ioPtr.*.Fonts, null);
+    c.rligSetupFontAwesome();
+
+    // required to be called to cache the font texture with raylib
+    c.ImGui_ImplRaylib_BuildFontAtlas();
+
     defer c.CloseWindow();
     
     sfxLightning = embedAndLoadSound("resources/audio/lightning_strike.mp3");
@@ -162,6 +189,13 @@ fn CustomLog(msgType: c_int, text: [*c]const u8, args: [*c]c.struct___va_list_ta
 
 var shaderSeconds: f32 = 0;
 fn update() void {
+    // Poll and handle events (inputs, window resize, etc.)
+    // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+    // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+    // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
+    // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+    _ = c.ImGui_ImplRaylib_ProcessEvents();
+
     c.UpdateMusicStream(tickOfTheClock);
     frames = fft.FFT_Analyzer.analyze(c.GetFrameTime());
 
@@ -218,7 +252,23 @@ fn update() void {
     }
 }
 
+fn igPreRender() void {
+    c.ImGui_ImplRaylib_NewFrame();
+    c.igNewFrame();
+    var open = true;
+    c.igShowDemoWindow(&open);
+    c.igRender();
+}
+
+fn igShowFrame() void {
+    c.ImGui_ImplRaylib_RenderDrawData(c.igGetDrawData());
+}
+
 fn draw() void {
+    // imgGui drawing happens before raylib Begin/EndDrawing
+    // Then, within the Raylib Begin/EndDrawing the render of imgui frame is requested.
+    igPreRender();
+
     c.BeginDrawing();
     defer c.EndDrawing();
     c.ClearBackground(c.BLACK);
@@ -269,6 +319,9 @@ fn draw() void {
     }
 
     c.DrawTexture(flashTexture, 0, 0, c.Fade(c.BLACK, (1.0 / 120.0) * bleedOut));
+
+    // imggui last for now
+    igShowFrame();
 }
 
 fn renderFFT(bottomY: c_int, height: c_int) void {

@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         // These two bools, disable llvm/lld and use the faster debug builder.
         // To see this enabled must pass Debug flag: zig build run -Doptimize=Debug
+        // NOTE: not sure if this interrupts building c++ dear imgui, disabling for now.
         .use_llvm = false,
         .use_lld = false,
     });
@@ -31,6 +32,7 @@ pub fn build(b: *std.Build) void {
     exe.linkFramework("OpenGL");
 
     exe.linkSystemLibrary("c");
+    exe.linkLibCpp(); // Needed for imgui, since it's a c++ lib after all.
 
     const cflags = &[_][]const u8{
         "-std=c99",
@@ -45,43 +47,61 @@ pub fn build(b: *std.Build) void {
         //"-Wzero-length-array",
     };
 
+    const cppFlags = &.{
+        "-fno-sanitize=undefined",
+        "-std=c++11",
+        "-Wno-deprecated-declarations",
+        "-DNO_FONT_AWESOME",
+    };
+
     // Resolve the 'library' dependency.
     const common_dep = b.dependency("common", .{});
     // Import the smaller 'add' and 'multiply' modules exported by the library.
     exe.root_module.addImport("common", common_dep.module("common"));
-
-    // const circBufMod = b.addModule("circBuf", .{
-    //     .root_source_file = .{ .path = "../../common/circle_buffer.zig" },
-    // });
-
-    // // One big module that imports and re-exports the smaller modules:
-    // const commonMod = b.addModule("common", .{
-    //     .root_source_file = .{ .path = "../../common/common.zig" },
-    //     .imports = &.{
-    //         .{ .name = "circBuf", .module = circBufMod },
-    //     },
-    // });
-    // const multiply_mod = b.addModule("multiply", .{
-    //     .root_source_file = .{ .path = "multiply.zig" },
-    // });
-
-    // // One big module that imports and re-exports the smaller modules:
-    // const library_mod = b.addModule("library", .{
-    //     .root_source_file = .{ .path = "library.zig" },
-    //     .imports = &.{
-    //         .{ .name = "add", .module = add_mod },
-    //         .{ .name = "multiply", .module = multiply_mod },
-    //     },
-    // });
 
     exe.addCSourceFile(.{
         .file = .{ .path = "../../lib/raygui/lib/raygui_impl.c" },
         .flags = cflags,
     });
 
-    // Raylib 5.0.
+    // NOTE: this block is for Raylib(5.0)/Raygui
     exe.addIncludePath(.{ .path = "../../lib/raylib-5.0-macos/include" });
     exe.addIncludePath(.{ .path = "../../lib/raygui/include" });
+
+    // Yes, all of these are required for this to work.
+    // imgui (the actual c++ popular Dear ImgGUI lib)
+    // cimgui (c-bindings wrapper)
+    // raylib-cimgui (raylib backend)
+
+    // NOTE: this block of includes is all for getting Dear ImgGUI to work.
+    // cimgui c-bindings (comes with dear imgui as a submodule)
+    exe.addIncludePath(.{ .path = "../../lib/cimgui" });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "../../lib/cimgui/cimgui.cpp",
+        },
+        .flags = cppFlags,
+    });
+
+    // Adds the submodule imgui itself.
+    exe.addIncludePath(.{ .path = "../../lib/cimgui/imgui" });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "../../lib/cimgui/imgui/imgui.cpp",
+            "../../lib/cimgui/imgui/imgui_demo.cpp",
+            "../../lib/cimgui/imgui/imgui_draw.cpp",
+            "../../lib/cimgui/imgui/imgui_tables.cpp",
+            "../../lib/cimgui/imgui/imgui_widgets.cpp",
+        },
+        .flags = cppFlags,
+    });
+
+    // ImgGUI Raylib backend integration.
+    exe.addIncludePath(.{ .path = "../../lib/raylib-cimgui" });
+    exe.addCSourceFile(.{
+        .file = .{ .path = "../../lib/raylib-cimgui/rlcimgui.c" },
+        .flags = cflags,
+    });
 
     b.installArtifact(exe);
 
