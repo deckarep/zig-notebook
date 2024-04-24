@@ -1,6 +1,8 @@
 const std = @import("std");
 const c = @import("c_defs.zig").c;
-const circBuf = @import("circle_buffer.zig").CircBuf;
+
+// Modeled after: https://ziggit.dev/t/i-want-to-create-a-complex-lib/3146/5?u=castholm
+const circBuf = @import("common").circBuf;
 
 // Original credit: @Tsoding
 // Zig version: @deckarep - Ralph Caraveo: https://github.com/tsoding/musializer/blob/master/src/plug.c
@@ -29,8 +31,8 @@ var out_smooth: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
 var out_smear: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = undefined;
 
 // Generate the hann window table at comptime.
-const hannTable: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = blk:{
-    @setEvalBranchQuota(FFT_SIZE+1);
+const hannTable: [FFT_SIZE]f32 align(CACHE_LINE_SIZE_BYTES) = blk: {
+    @setEvalBranchQuota(FFT_SIZE + 1);
     var tbl: [FFT_SIZE]f32 = undefined;
     for (0..FFT_SIZE) |i| {
         const t = @as(f32, @floatFromInt(i)) / (FFT_SIZE - 1);

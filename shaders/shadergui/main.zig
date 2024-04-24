@@ -2,7 +2,6 @@ const std = @import("std");
 pub const c = @import("c_defs.zig").c;
 const utils = @import("utils.zig");
 const fft = @import("fft.zig");
-const circBuf = @import("circle_buffer.zig").CircBuf;
 
 const WinWidth = 1280;
 const WinHeight = 768;

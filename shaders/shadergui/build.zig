@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         // These two bools, disable llvm/lld and use the faster debug builder.
         // To see this enabled must pass Debug flag: zig build run -Doptimize=Debug
-        .use_llvm = false, 
+        .use_llvm = false,
         .use_lld = false,
     });
 
@@ -44,6 +44,35 @@ pub fn build(b: *std.Build) void {
         "-Wunused-parameter",
         //"-Wzero-length-array",
     };
+
+    // Resolve the 'library' dependency.
+    const common_dep = b.dependency("common", .{});
+    // Import the smaller 'add' and 'multiply' modules exported by the library.
+    exe.root_module.addImport("common", common_dep.module("common"));
+
+    // const circBufMod = b.addModule("circBuf", .{
+    //     .root_source_file = .{ .path = "../../common/circle_buffer.zig" },
+    // });
+
+    // // One big module that imports and re-exports the smaller modules:
+    // const commonMod = b.addModule("common", .{
+    //     .root_source_file = .{ .path = "../../common/common.zig" },
+    //     .imports = &.{
+    //         .{ .name = "circBuf", .module = circBufMod },
+    //     },
+    // });
+    // const multiply_mod = b.addModule("multiply", .{
+    //     .root_source_file = .{ .path = "multiply.zig" },
+    // });
+
+    // // One big module that imports and re-exports the smaller modules:
+    // const library_mod = b.addModule("library", .{
+    //     .root_source_file = .{ .path = "library.zig" },
+    //     .imports = &.{
+    //         .{ .name = "add", .module = add_mod },
+    //         .{ .name = "multiply", .module = multiply_mod },
+    //     },
+    // });
 
     exe.addCSourceFile(.{
         .file = .{ .path = "../../lib/raygui/lib/raygui_impl.c" },
