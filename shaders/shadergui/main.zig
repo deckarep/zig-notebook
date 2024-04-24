@@ -32,25 +32,58 @@ var flashImg: c.Image = undefined;
 var initialState = .Start;
 var bleedOut: f32 = 120.0;
 
+const codebase = "All your codebase are belong to us.";
+
 pub fn main() !void {
-    std.log.info("All your codebase are belong to us.", .{});
+    std.log.info(codebase, .{});
     visualizer();
+}
+
+fn embedAndLoadSound(comptime path: []const u8) c.Sound{
+    const p = @embedFile(path);
+    const wav = c.LoadWaveFromMemory(".mp3", p, p.len);
+    const snd = c.LoadSoundFromWave(wav);
+    return snd;
+}
+
+fn embedAndLoadMusicStream(comptime path: []const u8) c.Music {
+    const p = @embedFile(path);
+    const stream = c.LoadMusicStreamFromMemory(".mp3", p, p.len);
+    return stream;
+}
+
+fn embedAndLoadTexture(comptime path: []const u8) c.Texture{
+    const img = embedAndLoadImage(path);
+    const txtr = c.LoadTextureFromImage(img);
+    return txtr;
+}
+
+fn embedAndLoadImage(comptime path: []const u8) c.Image {
+    const p = @embedFile(path);
+    const img = c.LoadImageFromMemory(".png", p, p.len);
+    return img;
+}
+
+fn embedAndLoadShader(comptime path: []const u8) c.Shader {
+    const p = @embedFile(path);
+    const shdr = c.LoadShaderFromMemory(null, p);
+    return shdr;
 }
 
 fn visualizer() void {
     c.SetConfigFlags(c.FLAG_VSYNC_HINT);
-    c.InitWindow(WinWidth, WinHeight, "All your codebase are belong to us.");
+    c.InitWindow(WinWidth, WinHeight, codebase);
     utils.rlCenterWin(WinWidth, WinHeight);
     c.SetTraceLogCallback(CustomLog);
     c.InitAudioDevice();
     c.SetTargetFPS(60);
 
     defer c.CloseWindow();
-
-    sfxLightning = c.LoadSound("../../resources/audio/lightning_strike.mp3");
+    
+    sfxLightning = embedAndLoadSound("resources/audio/lightning_strike.mp3");
     defer c.UnloadSound(sfxLightning);
 
-    sfxStaticElectricity = c.LoadSound("../../resources/audio/static_electricity.mp3");
+    sfxStaticElectricity = embedAndLoadSound("resources/audio/static_electricity.mp3");
     defer c.UnloadSound(sfxStaticElectricity);
 
     // Lightning.
@@ -65,23 +98,23 @@ fn visualizer() void {
     flashTexture = c.LoadTextureFromImage(flashImg);
     defer c.UnloadTexture(blankTexture);
 
-    background = c.LoadTexture("../../resources/textures/synthwave.png");
+    background = embedAndLoadTexture("resources/textures/synthwave.png");
     defer c.UnloadTexture(background);
-    zigLogoWhite = c.LoadTexture("../../resources/textures/zig-mark-neg-white.png");
+    zigLogoWhite = embedAndLoadTexture("resources/textures/zig-mark-neg-white.png");
     defer c.UnloadTexture(zigLogoWhite);
     fft.FFT_Analyzer.reset();
 
     // Load Shaders
-    dotShader = c.LoadShader(0, "../../resources/shaders/dots.fs");
+    dotShader = embedAndLoadShader("resources/shaders/dots.fs");
     defer c.UnloadShader(dotShader);
 
-    lightningShader = c.LoadShader(0, "../../resources/shaders/lightning.fs");
+    lightningShader = embedAndLoadShader("resources/shaders/lightning.fs");
     defer c.UnloadShader(lightningShader);
 
     iTimeLoc0 = c.GetShaderLocation(lightningShader, "iTime");
 
     // Load Music
-    tickOfTheClock = c.LoadMusicStream("../../resources/audio/Tick of the Clock.mp3");
+    tickOfTheClock = embedAndLoadMusicStream("resources/audio/Tick of the Clock.mp3");
     defer c.UnloadMusicStream(tickOfTheClock);
 
     c.AttachAudioStreamProcessor(tickOfTheClock.stream, fft.FFT_Analyzer.fft_process_callback);
@@ -133,14 +166,18 @@ fn update() void {
     frames = fft.FFT_Analyzer.analyze(c.GetFrameTime());
 
     if (shaderLoadInterval % (60 * 5) == 0) {
-        const tmpShader = c.LoadShader(0, "../../resources/shaders/dots.fs");
-        if (c.IsShaderReady(tmpShader)) {
-            c.UnloadShader(dotShader);
-            dotShader = tmpShader;
-            std.log.debug("shader v{d} successfully swapped!", .{shaderLoadInterval});
-        } else {
-            std.log.err("shader v{d} unsuccessful - keeping original", .{shaderLoadInterval});
-            std.posix.exit(0);
+        if (c.FileExists("resources/shaders/dots.fs")){
+            const tmpShader = c.LoadShader(0, "resources/shaders/dots.fs");
+            if (c.IsShaderReady(tmpShader)) {
+                c.UnloadShader(dotShader);
+                dotShader = tmpShader;
+                std.log.debug("shader v{d} successfully swapped!", .{shaderLoadInterval});
+            } else {
+                std.log.err("shader v{d} unsuccessful - keeping original", .{shaderLoadInterval});
+                std.posix.exit(0);
+            }
+        }else{
+            std.log.warn("dynamic shader: dot.fs is not found...IGNORING!", .{});
         }
     }
 
