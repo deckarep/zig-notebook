@@ -21,6 +21,7 @@ This demo shows off Raylib 5.0, GLSL 330 shaders, and a Zig implementation of th
   * Sweet music visualizing thanks to the FFT algorithm implemented in Zig
   * Thunder and static electricity sound
   * Prototype of hot-swappable shader at runtime.
+  * [crtview original implementation](https://github.com/mattiasgustavsson/crtview) by: [@MattiasG](https://twitter.com/Mattias_G)
 
 #### Requires
   * MacOS implementation for now, probably won't compile on Windows or Linux until someone sends me a patch!
