@@ -6,3 +6,5 @@ zig-cache
 zig-out
 main
 main.dSYM
+*.ini
+shaders/shadergui/imgui.ini

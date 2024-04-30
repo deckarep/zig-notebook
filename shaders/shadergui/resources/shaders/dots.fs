@@ -65,7 +65,6 @@ void main()
         f = sin(cellY - iTime * 20)*0.05;
     }
     
-
     // Output to screen
     finalColor = vec4(col+f, alpha_trans);
 }

@@ -15,6 +15,14 @@ var textBoxMultiEditMode: bool = true;
 var dotShader: c.Shader = undefined;
 var lightningShader: c.Shader = undefined;
 
+var crtBlurShader: c.Shader = undefined;
+var crtShader: c.Shader = undefined;
+var crtRenderTexture: c.RenderTexture = undefined;
+var crtRenderTexturePass2: c.RenderTexture = undefined;
+var blurredImg: c.Image = undefined;
+var crtShaderTexture1Loc: c_int = undefined;
+var fooTexture: c.Texture = undefined;
+
 var background: c.Texture = undefined;
 var zigLogoWhite: c.Texture = undefined;
 var blankTexture: c.Texture = undefined;
@@ -39,7 +47,7 @@ pub fn main() !void {
     visualizer();
 }
 
-fn embedAndLoadSound(comptime path: []const u8) c.Sound{
+fn embedAndLoadSound(comptime path: []const u8) c.Sound {
     const p = @embedFile(path);
     const wav = c.LoadWaveFromMemory(".mp3", p, p.len);
     const snd = c.LoadSoundFromWave(wav);
@@ -52,7 +60,7 @@ fn embedAndLoadMusicStream(comptime path: []const u8) c.Music {
     return stream;
 }
 
-fn embedAndLoadTexture(comptime path: []const u8) c.Texture{
+fn embedAndLoadTexture(comptime path: []const u8) c.Texture {
     const img = embedAndLoadImage(path);
     const txtr = c.LoadTextureFromImage(img);
     return txtr;
@@ -78,13 +86,13 @@ fn visualizer() void {
     c.InitAudioDevice();
     c.SetTargetFPS(60);
 
-     // Setup Dear ImGui context
+    // Setup Dear ImGui context
     const ctx = c.igCreateContext(null);
     defer c.igDestroyContext(ctx);
-    
+
     const ioPtr = c.igGetIO();
-    ioPtr.*.ConfigFlags |= c.ImGuiConfigFlags_NavEnableKeyboard;   // Enable Keyboard Controls
-    ioPtr.*.ConfigFlags |= c.ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+    ioPtr.*.ConfigFlags |= c.ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+    ioPtr.*.ConfigFlags |= c.ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 
     // set docking
     // #ifdef IMGUI_HAS_DOCK
@@ -95,7 +103,7 @@ fn visualizer() void {
     // Setup Dear ImGui style
     c.igStyleColorsDark(null);
 
-     // Setup Platform/Renderer backends
+    // Setup Platform/Renderer backends
     _ = c.ImGui_ImplRaylib_Init();
     defer c.ImGui_ImplRaylib_Shutdown();
 
@@ -106,12 +114,15 @@ fn visualizer() void {
     c.ImGui_ImplRaylib_BuildFontAtlas();
 
     defer c.CloseWindow();
-    
+
     sfxLightning = embedAndLoadSound("resources/audio/lightning_strike.mp3");
     defer c.UnloadSound(sfxLightning);
 
     sfxStaticElectricity = embedAndLoadSound("resources/audio/static_electricity.mp3");
     defer c.UnloadSound(sfxStaticElectricity);
+
+    fooTexture = c.LoadTexture("foo.png");
+    defer c.UnloadTexture(fooTexture);
 
     // Lightning.
     blankImg = c.GenImageColor(WinWidth, 534, c.WHITE);
@@ -137,6 +148,41 @@ fn visualizer() void {
 
     lightningShader = embedAndLoadShader("resources/shaders/lightning.fs");
     defer c.UnloadShader(lightningShader);
+
+    // Blur shader
+    // I guess i need to port shaders to the right version to work on mac. 120 doesn't compile.
+    // I guess mac requires 330, so this blur.fs won't work as-is.
+    crtRenderTexture = c.LoadRenderTexture(1280, 768);
+    crtRenderTexturePass2 = c.LoadRenderTexture(1280, 768);
+    defer c.UnloadRenderTexture(crtRenderTexture);
+    defer c.UnloadRenderTexture(crtRenderTexturePass2);
+    crtBlurShader = embedAndLoadShader("resources/shaders/crtblur.fs");
+    defer c.UnloadShader(crtBlurShader);
+    crtShader = embedAndLoadShader("resources/shaders/crt.fs");
+    defer c.UnloadShader(crtShader);
+
+    crtShaderTexture1Loc = c.GetShaderLocation(crtShader, "texture1");
+
+      // Apply blur to background.
+    c.BeginTextureMode(crtRenderTexturePass2);
+    c.BeginShaderMode(crtBlurShader);
+    c.DrawTexture(background, 0, 0, c.WHITE);
+    c.EndShaderMode();
+    c.EndTextureMode();
+
+    blurredImg = c.LoadImageFromTexture(crtRenderTexturePass2.texture);
+
+    // const result = c.ExportImage(blurredImg, "foo.png");
+    // if (result){
+    //     std.log.debug("foo.png was saved successfully!", .{});
+    // }
+
+    // Give previous buffer to crtShader.
+    // const tmpTexture = c.LoadTextureFromImage(blurredImg);
+    // defer c.UnloadTexture(tmpTexture);
+    
+    
+    c.SetShaderValueTexture(crtShader, crtShaderTexture1Loc, fooTexture);
 
     iTimeLoc0 = c.GetShaderLocation(lightningShader, "iTime");
 
@@ -199,8 +245,9 @@ fn update() void {
     c.UpdateMusicStream(tickOfTheClock);
     frames = fft.FFT_Analyzer.analyze(c.GetFrameTime());
 
-    if (shaderLoadInterval % (60 * 5) == 0) {
-        if (c.FileExists("resources/shaders/dots.fs")){
+    if (false and shaderLoadInterval % (30 * 5) == 0) {
+        // Dynamically refresh dot.fs shader.
+        if (c.FileExists("resources/shaders/dots.fs")) {
             const tmpShader = c.LoadShader(0, "resources/shaders/dots.fs");
             if (c.IsShaderReady(tmpShader)) {
                 c.UnloadShader(dotShader);
@@ -210,8 +257,23 @@ fn update() void {
                 std.log.err("shader v{d} unsuccessful - keeping original", .{shaderLoadInterval});
                 std.posix.exit(0);
             }
-        }else{
+        } else {
             std.log.warn("dynamic shader: dot.fs is not found...IGNORING!", .{});
+        }
+
+        // Dynamically refresh crt.fs shader.
+        if (false and c.FileExists("resources/shaders/crt.fs")) {
+            const tmpShader = c.LoadShader(0, "resources/shaders/crt.fs");
+            if (c.IsShaderReady(tmpShader)) {
+                c.UnloadShader(crtShader);
+                crtShader = tmpShader;
+                std.log.debug("shader v{d} successfully swapped!", .{shaderLoadInterval});
+            } else {
+                std.log.err("shader v{d} unsuccessful - keeping original", .{shaderLoadInterval});
+                std.posix.exit(0);
+            }
+        } else {
+            std.log.warn("dynamic shader: crt.fs is not found...IGNORING!", .{});
         }
     }
 
@@ -235,6 +297,14 @@ fn update() void {
 
     const iTimeLoc = c.GetShaderLocation(dotShader, "iTime");
     c.SetShaderValue(dotShader, iTimeLoc, &shaderSeconds, c.SHADER_UNIFORM_FLOAT);
+
+    const crtTimeLoc = c.GetShaderLocation(crtShader, "iTime");
+    c.SetShaderValue(crtShader, crtTimeLoc, &shaderSeconds, c.SHADER_UNIFORM_FLOAT);
+    // const crtShaderBackBufferLoc = c.GetShaderLocation(crtShader, "backbuffer");
+    // c.SetShaderValueTexture(crtShader, crtShaderBackBufferLoc, background);
+    // const crtShaderBlurBufferLoc = c.GetShaderLocation(crtShader, "blurbuffer");
+    // c.SetShaderValueTexture(crtShader, crtShaderBlurBufferLoc, background);
+
     shaderLoadInterval += 1;
 
     if (flashLifetime > 0) {
@@ -252,11 +322,54 @@ fn update() void {
     }
 }
 
+var showAnotherWindow = false;
 fn igPreRender() void {
     c.ImGui_ImplRaylib_NewFrame();
     c.igNewFrame();
-    var open = true;
-    c.igShowDemoWindow(&open);
+
+    var showDemoWindow = false;
+
+    if (showDemoWindow) {
+        c.igShowDemoWindow(&showDemoWindow);
+    }
+
+    {
+        _ = c.igBegin("Hello, world!", null, 0);
+        defer c.igEnd();
+
+        c.igText("Some fuckin' text eh?");
+        _ = c.igCheckbox("Another Window", &showAnotherWindow);
+    }
+
+    if (showAnotherWindow) {
+        _ = c.igBegin("Another Window", &showAnotherWindow, 0); // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+        defer c.igEnd();
+        c.igText("Hello from another window!");
+
+        const N_SAMPLES = 100;
+        var samples: [N_SAMPLES]f32 = undefined;
+        for (0..N_SAMPLES) |n| {
+            samples[n] = @sin(@as(f32, @floatFromInt(n)) * 0.2 + @as(f32, @floatCast(c.igGetTime())) * 1.5);
+        }
+
+        // The C++ regular code has default args, but the Zig ends up flatten such calls and expanding them out into full arg style function variants.
+        c.igPlotLines_FloatPtr("Samples", &samples, N_SAMPLES, 0, null, c.igGET_FLT_MAX(), c.igGET_FLT_MAX(), .{ .x = 0, .y = 100 }, @sizeOf(f32));
+
+        const buttonSize = c.ImVec2{ .x = 0, .y = 0 };
+        if (c.igButton("Close me", buttonSize)) {
+            showAnotherWindow = false;
+        }
+
+        // Display contents in a scrolling region
+        c.igTextColored(.{ .x = 1, .y = 1, .z = 0, .w = 0 }, "Important Stuff");
+        _ = c.igBeginChild_Str("Important Stuff", .{ .x = 0, .y = 0 }, 0, 0);
+        defer c.igEndChild();
+        for (0..50_000) |n| {
+            c.igText("%04d: Some text", n);
+        }
+    }
+
+    // Must be last command.
     c.igRender();
 }
 
@@ -269,11 +382,37 @@ fn draw() void {
     // Then, within the Raylib Begin/EndDrawing the render of imgui frame is requested.
     igPreRender();
 
+    // apply crt shader.
+    c.BeginTextureMode(crtRenderTexture);
+    c.BeginShaderMode(crtShader);
+    // AHA! shader value must be set in right context!
+    c.SetShaderValueTexture(crtShader, crtShaderTexture1Loc, crtRenderTexturePass2.texture);//fooTexture);
+    c.DrawTexture(background, 0, 0, c.WHITE);
+    c.EndShaderMode();
+    c.EndTextureMode();
+    
+   
     c.BeginDrawing();
     defer c.EndDrawing();
     c.ClearBackground(c.BLACK);
 
-    c.DrawTexture(background, 0, 0, c.WHITE);
+    // NOTE: Render texture must be y-flipped due to default OpenGL coordinates (left-bottom)
+    c.DrawTextureRec(
+        crtRenderTexture.texture,
+        .{ .x = 0, .y = 0, .width = 1280, .height = -768 },
+        .{ .x = 0, .y = 0 },
+        c.WHITE,
+    );  
+
+    // This line is just to test the pass 2, but it shouldn't be drawn.
+    if (false){
+        c.DrawTextureRec(
+            crtRenderTexturePass2.texture,
+            .{ .x = 0, .y = 0, .width = 1280, .height = -768 },
+            .{ .x = 0, .y = 0 },
+            c.WHITE,
+        );
+    }
 
     // Now do lightening texture (BEHIND ZIG LOGO)
     c.BeginBlendMode(c.BLEND_ADDITIVE);
@@ -293,7 +432,7 @@ fn draw() void {
     );
     c.EndBlendMode();
 
-    //c.DrawFPS(20, WinHeight - 40);
+    c.DrawFPS(20, WinHeight - 40);
     {
         c.BeginShaderMode(dotShader);
         defer c.EndShaderMode();

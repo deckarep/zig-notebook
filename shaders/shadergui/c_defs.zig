@@ -7,7 +7,7 @@ pub const c = @cImport({
     @cInclude("rlgl.h");
     @cInclude("raygui.h");
 
-    // raylib_cimgui bindings
+    // imgui/cimgui/raylib-cimgui backend
     @cInclude("imgui_impl_raylib.h");
     @cInclude("rlcimgui.h");
 });
