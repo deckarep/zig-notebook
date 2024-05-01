@@ -79,7 +79,7 @@ fn embedAndLoadShader(comptime path: []const u8) c.Shader {
 }
 
 fn visualizer() void {
-    c.SetConfigFlags(c.FLAG_VSYNC_HINT);
+    c.SetConfigFlags(c.FLAG_VSYNC_HINT | c.FLAG_WINDOW_RESIZABLE);
     c.InitWindow(WinWidth, WinHeight, codebase);
     utils.rlCenterWin(WinWidth, WinHeight);
     c.SetTraceLogCallback(CustomLog);
@@ -136,7 +136,7 @@ fn visualizer() void {
     flashTexture = c.LoadTextureFromImage(flashImg);
     defer c.UnloadTexture(blankTexture);
 
-    background = embedAndLoadTexture("resources/textures/synthwave.png");
+    background = embedAndLoadTexture("resources/textures/synth-car.png");
     defer c.UnloadTexture(background);
     zigLogoWhite = embedAndLoadTexture("resources/textures/zig-mark-neg-white.png");
     defer c.UnloadTexture(zigLogoWhite);
@@ -172,22 +172,12 @@ fn visualizer() void {
 
     blurredImg = c.LoadImageFromTexture(crtRenderTexturePass2.texture);
 
-    // const result = c.ExportImage(blurredImg, "foo.png");
-    // if (result){
-    //     std.log.debug("foo.png was saved successfully!", .{});
-    // }
-
-    // Give previous buffer to crtShader.
-    // const tmpTexture = c.LoadTextureFromImage(blurredImg);
-    // defer c.UnloadTexture(tmpTexture);
-    
-    
     c.SetShaderValueTexture(crtShader, crtShaderTexture1Loc, fooTexture);
 
     iTimeLoc0 = c.GetShaderLocation(lightningShader, "iTime");
 
     // Load Music
-    tickOfTheClock = embedAndLoadMusicStream("resources/audio/Tick of the Clock.mp3");
+    tickOfTheClock = embedAndLoadMusicStream("resources/audio/Demon Dance.mp3");
     defer c.UnloadMusicStream(tickOfTheClock);
 
     c.AttachAudioStreamProcessor(tickOfTheClock.stream, fft.FFT_Analyzer.fft_process_callback);
@@ -460,9 +450,9 @@ fn draw() void {
 }
 
 fn renderFFT(bottomY: c_int, height: c_int) void {
-    const leftX = 0;
-    const width: c_int = @intCast(WinWidth / frames);
-    const xSpacing = 40;
+    const leftX = 15;
+    const width: c_int = @intCast((WinWidth) / frames);
+    const xSpacing = 30;
     const full_degrees: f32 = 360.0 / @as(f32, @floatFromInt(frames));
 
     // This translation was just to slightly shifter over the FFT bars.

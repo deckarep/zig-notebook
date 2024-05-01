@@ -85,7 +85,7 @@ void main(void) {
     i = (1.0 - i) * 0.85 + 0.15;
 
     // Ghosting - needs to sample from blur buffer.
-    float ghs = 2.15; // 0.15 Turning this up made a difference, now i see it.
+    float ghs = 3.15; // 0.15 Turning this up made a difference, now i see it.
     vec3 r = tsample(texture1, vec2(x - 0.014 * 1.0, -0.027) * 0.85 + 0.007 * vec2(0.35 * sin(1.0 / 7.0 + 15.0 * curved_uv.y + 0.9 * iTime),
         0.35 * sin(2.0 / 7.0 + 10.0 * curved_uv.y + 1.37 * iTime)) + vec2(scuv.x + 0.001, scuv.y + 0.001),
         5.5 + 1.3 * sin(3.0 / 9.0 + 31.0 * curved_uv.x + 1.70 * iTime), iResolution).xyz * vec3(0.5, 0.25, 0.25);
