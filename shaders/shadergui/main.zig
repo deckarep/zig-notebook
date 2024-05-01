@@ -245,9 +245,9 @@ fn update() void {
     c.UpdateMusicStream(tickOfTheClock);
     frames = fft.FFT_Analyzer.analyze(c.GetFrameTime());
 
-    if (false and shaderLoadInterval % (30 * 5) == 0) {
+    if (true and shaderLoadInterval % (30 * 5) == 0) {
         // Dynamically refresh dot.fs shader.
-        if (c.FileExists("resources/shaders/dots.fs")) {
+        if (false and c.FileExists("resources/shaders/dots.fs")) {
             const tmpShader = c.LoadShader(0, "resources/shaders/dots.fs");
             if (c.IsShaderReady(tmpShader)) {
                 c.UnloadShader(dotShader);
@@ -262,7 +262,7 @@ fn update() void {
         }
 
         // Dynamically refresh crt.fs shader.
-        if (false and c.FileExists("resources/shaders/crt.fs")) {
+        if (true and c.FileExists("resources/shaders/crt.fs")) {
             const tmpShader = c.LoadShader(0, "resources/shaders/crt.fs");
             if (c.IsShaderReady(tmpShader)) {
                 c.UnloadShader(crtShader);
@@ -300,10 +300,6 @@ fn update() void {
 
     const crtTimeLoc = c.GetShaderLocation(crtShader, "iTime");
     c.SetShaderValue(crtShader, crtTimeLoc, &shaderSeconds, c.SHADER_UNIFORM_FLOAT);
-    // const crtShaderBackBufferLoc = c.GetShaderLocation(crtShader, "backbuffer");
-    // c.SetShaderValueTexture(crtShader, crtShaderBackBufferLoc, background);
-    // const crtShaderBlurBufferLoc = c.GetShaderLocation(crtShader, "blurbuffer");
-    // c.SetShaderValueTexture(crtShader, crtShaderBlurBufferLoc, background);
 
     shaderLoadInterval += 1;
 

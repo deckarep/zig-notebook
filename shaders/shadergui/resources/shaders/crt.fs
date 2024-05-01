@@ -5,10 +5,10 @@ in vec2 fragTexCoord;
 in vec4 fragColor;
 
 uniform float iTime;
-uniform vec2 iResolution = vec2(1280, 768);
+uniform vec2 iResolution = vec2(1280, 768); // Hardcode for now, should be passed in.
 uniform vec3 modulate = vec3(1.0);
 uniform float useFrame = 0.0;
-uniform sampler2D texture0;
+uniform sampler2D texture0; // (default - implicitely passed via Raylib)
 uniform sampler2D texture1; // texture1 (blurbuffer)
 
 vec2 uv;
@@ -96,19 +96,13 @@ void main(void) {
         0.35 * cos(2.0 / 3.0 + 10.0 * curved_uv.y + 1.63 * iTime)) + vec2(scuv.x - 0.002, scuv.y + 0.000),
         5.3 + 1.3 * sin(3.0 / 7.0 + 91.0 * curved_uv.x + 1.65 * iTime), iResolution).xyz * vec3(0.25, 0.25, 0.5);
 
-    // START: Experiment here
-    // col = texture(texture1, fragTexCoord).rgb;
-    // I can see the ghosting with this line, but with the real code it's not noticeable.
-    // col += r;
-    // END: exp here.
-    
     col += vec3(ghs * (1.0 - 0.299)) * pow(clamp(vec3(3.0) * r, vec3(0.0), vec3(1.0)), vec3(2.0)) * vec3(i);
     col += vec3(ghs * (1.0 - 0.587)) * pow(clamp(vec3(3.0) * g, vec3(0.0), vec3(1.0)), vec3(2.0)) * vec3(i);
     col += vec3(ghs * (1.0 - 0.114)) * pow(clamp(vec3(3.0) * b, vec3(0.0), vec3(1.0)), vec3(2.0)) * vec3(i);
 
     // Level adjustment (curves)
     col *= vec3(0.95, 1.05, 0.95);
-    col = clamp(col * 1.3 + 0.75 * col * col + 1.25 * col * col *col *col * col, vec3(0.0), vec3(10.0));
+    col = clamp(col * 1.3 + 0.75 * col * col + 1.25 * col * col * col * col * col, vec3(0.0), vec3(10.0));
 
     // Vignette
     float vig = (0.1 + 1.0 * 16.0 * curved_uv.x * curved_uv.y * (1.0 - curved_uv.x) * (1.0 - curved_uv.y));
@@ -121,7 +115,7 @@ void main(void) {
     col *= vec3(s);
 
     // Vertical lines (shadow mask)
-    col *= 1.0 - 0.23 * (clamp((mod(gl_FragCoord.xy.x, 3.0)) / 2.0, 0.0, 1.0));
+    col *= 1.0 - 0.23 * (clamp((mod(gl_FragCoord.xy.x, 30.0)) / 2.0, 0.0, 1.0));
 
     // Tone map
     col = filmic( col );
@@ -133,7 +127,7 @@ void main(void) {
     //vec2 seed = curved_uv;
     //col -= 0.015 * pow(vec3(rand( seed + iTime ), rand( seed + iTime * 2.0 ), rand( seed + iTime * 3.0 ) ), vec3(1.5) );
 
-    // Flicker
+    // Flicker - ?? rc: Don't really see this effect, investigate.
     col *= (1.0 - 0.004 * (sin(50.0 * iTime + curved_uv.y * 2.0) * 0.5 + 0.5));
 
     // // Clamp
