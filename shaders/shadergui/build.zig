@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
         // These two bools, disable llvm/lld and use the faster debug builder.
         // To see this enabled must pass Debug flag: zig build run -Doptimize=Debug
         // NOTE: not sure if this interrupts building c++ dear imgui, disabling for now.
+        // NOTE: When llvm is disabled, leak detection doesn't show a useful traceback.
         .use_llvm = false,
         .use_lld = false,
     });

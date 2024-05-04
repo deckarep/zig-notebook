@@ -2,6 +2,7 @@ const std = @import("std");
 pub const c = @import("c_defs.zig").c;
 const utils = @import("utils.zig");
 const fft = @import("fft.zig");
+const ms = @import("multishader.zig");
 
 const WinWidth = 1280;
 const WinHeight = 768;
@@ -40,11 +41,19 @@ var flashImg: c.Image = undefined;
 var initialState = .Start;
 var bleedOut: f32 = 120.0;
 
+// Multishader test objects
+var alfredTexture: c.Texture = undefined;
+var redShader: c.Shader = undefined;
+var blueShader: c.Shader = undefined;
+var swirlShader: c.Shader = undefined;
+var crossHatchShader: c.Shader = undefined;
+var fishEyeShader: c.Shader = undefined;
+
 const codebase = "All your codebase are belong to us.";
 
 pub fn main() !void {
     std.log.info(codebase, .{});
-    visualizer();
+    try visualizer();
 }
 
 fn embedAndLoadSound(comptime path: []const u8) c.Sound {
@@ -74,11 +83,35 @@ fn embedAndLoadImage(comptime path: []const u8) c.Image {
 
 fn embedAndLoadShader(comptime path: []const u8) c.Shader {
     const p = @embedFile(path);
+    if (std.mem.eql(u8, path, "blue.fs")) {
+        std.log.debug("Loading blue.fs shader...", .{});
+    }
     const shdr = c.LoadShaderFromMemory(null, p);
+    if (std.mem.eql(u8, path, "blue.fs")) {
+        std.log.debug("Load blue.fs complete...", .{});
+    }
     return shdr;
 }
 
-fn visualizer() void {
+fn visualizer() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{
+        .thread_safe = false,
+        .safety = true,
+    }){};
+    const allocator = gpa.allocator();
+    defer {
+        const deinit_status = gpa.deinit();
+        if (deinit_status == .leak) {
+            std.log.err("Leaks were discovered!", .{});
+        }
+    }
+
+    var argsIter = try std.process.argsWithAllocator(allocator);
+    defer argsIter.deinit();
+    while (argsIter.next()) |arg| {
+        std.log.debug("arg val => {s}", .{arg});
+    }
+
     c.SetConfigFlags(c.FLAG_VSYNC_HINT | c.FLAG_WINDOW_RESIZABLE);
     c.InitWindow(WinWidth, WinHeight, codebase);
     utils.rlCenterWin(WinWidth, WinHeight);
@@ -142,6 +175,24 @@ fn visualizer() void {
     defer c.UnloadTexture(zigLogoWhite);
     fft.FFT_Analyzer.reset();
 
+    // Load Multishader test shaders
+    alfredTexture = c.LoadTexture("resources/textures/alfred_transparent.png");
+    defer c.UnloadTexture(alfredTexture);
+    redShader = embedAndLoadShader("resources/shaders/red.fs");
+    defer c.UnloadShader(redShader);
+
+    blueShader = embedAndLoadShader("resources/shaders/pixelshader.fs");
+    defer c.UnloadShader(blueShader);
+
+    swirlShader = embedAndLoadShader("resources/shaders/swirl.fs");
+    defer c.UnloadShader(swirlShader);
+
+    crossHatchShader = embedAndLoadShader("resources/shaders/crosshatch.fs");
+    defer c.UnloadShader(crossHatchShader);
+
+    fishEyeShader = embedAndLoadShader("resources/shaders/fisheye.fs");
+    defer c.UnloadShader(fishEyeShader);
+
     // Load Shaders
     dotShader = embedAndLoadShader("resources/shaders/dots.fs");
     defer c.UnloadShader(dotShader);
@@ -163,16 +214,13 @@ fn visualizer() void {
 
     crtShaderTexture1Loc = c.GetShaderLocation(crtShader, "texture1");
 
-      // Apply blur to background.
+    // Apply blur to background, this occurs just once to fill the sampler2d texture blurbuffer.
     c.BeginTextureMode(crtRenderTexturePass2);
     c.BeginShaderMode(crtBlurShader);
     c.DrawTexture(background, 0, 0, c.WHITE);
     c.EndShaderMode();
     c.EndTextureMode();
-
     blurredImg = c.LoadImageFromTexture(crtRenderTexturePass2.texture);
-
-    c.SetShaderValueTexture(crtShader, crtShaderTexture1Loc, fooTexture);
 
     iTimeLoc0 = c.GetShaderLocation(lightningShader, "iTime");
 
@@ -211,8 +259,8 @@ fn CustomLog(msgType: c_int, text: [*c]const u8, args: [*c]c.struct___va_list_ta
             if (std.mem.indexOf(u8, slice, "SHADER")) |idx| {
                 std.log.debug("PROBLEM COMPILING SHADER!!!!", .{});
                 std.log.debug("text => {s} @ idx: {d}", .{ text, idx });
+                shaderLoadHasErrors = true;
             }
-            shaderLoadHasErrors = true;
             _ = c.printf("[WARN] : ");
         },
         c.LOG_DEBUG => _ = c.printf("[DEBUG]: "),
@@ -363,21 +411,34 @@ fn igShowFrame() void {
     c.ImGui_ImplRaylib_RenderDrawData(c.igGetDrawData());
 }
 
+var errorDelayCounter: usize = 0;
 fn draw() void {
+    if (errorDelayCounter == 10) {
+        std.process.exit(99);
+    }
+    if (shaderLoadHasErrors) {
+        errorDelayCounter += 1;
+    }
+
     // imgGui drawing happens before raylib Begin/EndDrawing
     // Then, within the Raylib Begin/EndDrawing the render of imgui frame is requested.
     igPreRender();
+
+    // Test ApplyMultiShader.
+    //const shaderCollect = [_]c.Shader{blueShader, redShader, swirlShader};
+    const shaderCollect = &.{blueShader};
+    const rt = ms.GetMultiShadedRT(shaderCollect, alfredTexture);
+    defer ms.UnloadMultiShadedRT();
 
     // apply crt shader.
     c.BeginTextureMode(crtRenderTexture);
     c.BeginShaderMode(crtShader);
     // AHA! shader value must be set in right context!
-    c.SetShaderValueTexture(crtShader, crtShaderTexture1Loc, crtRenderTexturePass2.texture);//fooTexture);
+    c.SetShaderValueTexture(crtShader, crtShaderTexture1Loc, crtRenderTexturePass2.texture); //fooTexture);
     c.DrawTexture(background, 0, 0, c.WHITE);
     c.EndShaderMode();
     c.EndTextureMode();
-    
-   
+
     c.BeginDrawing();
     defer c.EndDrawing();
     c.ClearBackground(c.BLACK);
@@ -388,16 +449,29 @@ fn draw() void {
         .{ .x = 0, .y = 0, .width = 1280, .height = -768 },
         .{ .x = 0, .y = 0 },
         c.WHITE,
-    );  
+    );
 
     // This line is just to test the pass 2, but it shouldn't be drawn.
-    if (false){
+    if (false) {
         c.DrawTextureRec(
             crtRenderTexturePass2.texture,
             .{ .x = 0, .y = 0, .width = 1280, .height = -768 },
             .{ .x = 0, .y = 0 },
             c.WHITE,
         );
+    }
+
+    if (true) {
+        c.DrawTextureRec(
+            rt.texture,
+            .{ .x = 0, .y = 0, .width = @floatFromInt(alfredTexture.width), .height = @floatFromInt(-alfredTexture.height) },
+            .{ .x = 200, .y = 200 },
+            c.WHITE,
+        );
+
+        c.BeginShaderMode(blueShader);
+        defer c.EndShaderMode();
+        c.DrawTexture(alfredTexture, 900, 200, c.WHITE);
     }
 
     // Now do lightening texture (BEHIND ZIG LOGO)
