@@ -37,40 +37,37 @@ Furthermore, my intention is to build a general-purpose and performant Zig modul
 
 #### Usage
 ```zig
+    // import the namespace.
+    const set = @import("set.zig");
 
-// TODO: this is not yet tested.
+    // Create a set of u32s called A
+    var A = Set(u32).init(std.testing.allocator);
+    defer A.deinit();
 
-// import the namespace.
-const set = @import("set.zig");
+    // Add some data
+    _ = try A.add(5);
+    _ = try A.add(6);
+    _ = try A.add(7);
 
-// Create a set of u32s called A
-var A = Set(u32).init(std.testing.allocator);
-defer A.deinit();
+    // Add more data; single shot, duplicate data is ignored.
+    _ = try A.appendSlice(&.{ 5, 3, 0, 9 });
 
-// Add some data
-_ = try A.add(5);
-_ = try A.add(6);
-_ = try A.add(7);
+    // Create another set called B
+    var B = Set(u32).init(std.testing.allocator);
+    defer B.deinit();
 
-// Add more data; single shot, duplicate data is ignored.
- _ = try A.appendSlice(&.{ 5, 3, 0, 9 });
+    // Add data to B
+    _ = try B.appendSlice(&.{ 50, 30, 20 });
 
-// Create another set called B
-var B = Set(u32).init(std.testing.allocator);
-defer B.deinit();
+    // Get the union of A | B
+    var un = try A.unionOf(B);
+    defer un.deinit();
 
-// Add data to B
-_ = try B.appendSlice(&.{ 50, 30, 20 });
-
-// Get the union of A | B
-var un = try A.@"union"(B);
-defer un.deinit();
-
-// Grab an iterator and dump the contents.
-var iter = un.iterator();
-while (iter.next()) |el| {
-    std.log.debug("element: {d}", .{el.*});
-}
+    // Grab an iterator and dump the contents.
+    var iter = un.iterator();
+    while (iter.next()) |el| {
+        std.log.debug("element: {d}", .{el.*});
+    }
 ```
 
 ```sh

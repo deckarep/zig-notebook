@@ -479,7 +479,41 @@ const testing = std.testing;
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 
-test "basic usage" {
+test "example usage" {
+    // import the namespace.
+    // const set = @import("set.zig");
+
+    // Create a set of u32s called A
+    var A = Set(u32).init(std.testing.allocator);
+    defer A.deinit();
+
+    // Add some data
+    _ = try A.add(5);
+    _ = try A.add(6);
+    _ = try A.add(7);
+
+    // Add more data; single shot, duplicate data is ignored.
+    _ = try A.appendSlice(&.{ 5, 3, 0, 9 });
+
+    // Create another set called B
+    var B = Set(u32).init(std.testing.allocator);
+    defer B.deinit();
+
+    // Add data to B
+    _ = try B.appendSlice(&.{ 50, 30, 20 });
+
+    // Get the union of A | B
+    var un = try A.unionOf(B);
+    defer un.deinit();
+
+    // Grab an iterator and dump the contents.
+    var iter = un.iterator();
+    while (iter.next()) |el| {
+        std.log.debug("element: {d}", .{el.*});
+    }
+}
+
+test "comprehensive usage" {
     var set = Set(u32).init(std.testing.allocator);
     defer set.deinit();
 
@@ -589,7 +623,7 @@ test "clear/capacity" {
     try expect(b.capacity() >= cap);
 
     b.clearAndFree();
-    
+
     try expectEqual(0, b.cardinality());
     try expectEqual(b.capacity(), 0);
 }
