@@ -75,9 +75,19 @@ pub fn Set(comptime E: type) type {
             return prevCount != self.map.count();
         }
 
+        /// Appends all elements from the provided set, and may allocate.
+        /// append returns an Allocator.Error or Size which represents how
+        /// many elements added and not previously in the Set.
+        pub fn append(self: *Self, other: Self) Allocator.Error!Size {
+            const prevCount = self.map.count();
+
+            try self.unionUpdate(other);
+            return self.map.count() - prevCount;
+        }
+
         /// Appends all elements from the provided slice, and may allocate.
         /// appendSlice returns an Allocator.Error or Size which represents how
-        /// many elements added and not previously in the Set.
+        /// many elements added and not previously in the slice.
         pub fn appendSlice(self: *Self, elements: []const E) Allocator.Error!Size {
             const prevCount = self.map.count();
             for (elements) |el| {
@@ -132,7 +142,18 @@ pub fn Set(comptime E: type) type {
         }
 
         /// Returns true when all elements in the provided slice are present otherwise false.
-        pub fn containsAll(self: Self, elements: []const E) bool {
+        pub fn containsAll(self: Self, other: Self) bool {
+            var iter = other.iterator();
+            while (iter.next()) |el| {
+                if (!self.map.contains(el.*)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /// Returns true when all elements in the provided slice are present otherwise false.
+        pub fn containsAllSlice(self: Self, elements: []const E) bool {
             for (elements) |el| {
                 if (!self.map.contains(el)) {
                     return false;
@@ -142,7 +163,18 @@ pub fn Set(comptime E: type) type {
         }
 
         /// Returns true when at least one or more elements exist within the Set otherwise false.
-        pub fn containsAny(self: Self, elements: []const E) bool {
+        pub fn containsAny(self: Self, other: Self) bool {
+            var iter = other.iterator();
+            while (iter.next()) |el| {
+                if (self.map.contains(el.*)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// Returns true when at least one or more elements exist within the Set otherwise false.
+        pub fn containsAnySlice(self: Self, elements: []const E) bool {
             for (elements) |el| {
                 if (self.map.contains(el)) {
                     return true;
@@ -453,13 +485,13 @@ test "basic usage" {
 
     // Positive cases.
     try expect(set.contains(8));
-    try expect(set.containsAll(&.{ 5, 3, 9 }));
-    try expect(set.containsAny(&.{ 5, 55, 12 }));
+    try expect(set.containsAllSlice(&.{ 5, 3, 9 }));
+    try expect(set.containsAnySlice(&.{ 5, 55, 12 }));
 
     // Negative cases.
     try expect(!set.contains(99));
-    try expect(!set.containsAll(&.{ 8, 6, 77 }));
-    try expect(!set.containsAny(&.{ 99, 55, 44 }));
+    try expect(!set.containsAllSlice(&.{ 8, 6, 77 }));
+    try expect(!set.containsAnySlice(&.{ 99, 55, 44 }));
 
     try expectEqual(set.cardinality(), 7);
 
@@ -490,18 +522,31 @@ test "basic usage" {
     defer inter.deinit();
     try expect(!inter.isEmpty());
     try expectEqual(inter.cardinality(), 4);
-    try expect(inter.containsAll(&.{ 5, 3, 0, 9 }));
+    try expect(inter.containsAllSlice(&.{ 5, 3, 0, 9 }));
 
     // Union
     var un = try set.unionOf(other);
     defer un.deinit();
     try expect(!un.isEmpty());
     try expectEqual(un.cardinality(), 7);
-    try expect(un.containsAll(&.{ 8, 6, 7, 5, 3, 0, 9 }));
+    try expect(un.containsAllSlice(&.{ 8, 6, 7, 5, 3, 0, 9 }));
 
     // differenceOf
+    var diff = try set.differenceOf(other);
+    defer diff.deinit();
+    try expect(!diff.isEmpty());
+    try expectEqual(diff.cardinality(), 3);
+    try expect(diff.containsAllSlice(&.{ 8, 7, 6 }));
 
-    // Symmetric differenceOf
+    // symmetricDifferenceOf
+    _ = try set.add(11111);
+    _ = try set.add(9999);
+    _ = try other.add(7777);
+    var symmDiff = try set.symmetricDifferenceOf(other);
+    defer symmDiff.deinit();
+    try expect(!symmDiff.isEmpty());
+    try expectEqual(symmDiff.cardinality(), 6);
+    try expect(symmDiff.containsAllSlice(&.{ 7777, 11111, 8, 7, 6, 9999 }));
 
     // subsetOf
 
@@ -631,7 +676,7 @@ test "in-place methods" {
 
     try a.intersectionUpdate(b);
     try expectEqual(a.cardinality(), 2);
-    try expect(a.containsAll(&.{ 20, 30 }));
+    try expect(a.containsAllSlice(&.{ 20, 30 }));
 
     // unionUpdate
     var c = Set(u32).init(std.testing.allocator);
@@ -644,7 +689,7 @@ test "in-place methods" {
 
     try c.unionUpdate(d);
     try expectEqual(c.cardinality(), 6);
-    try expect(c.containsAll(&.{ 10, 20, 30, 40, 66 }));
+    try expect(c.containsAllSlice(&.{ 10, 20, 30, 40, 66 }));
 
     // differenceUpdate
     var e = Set(u32).init(std.testing.allocator);
@@ -672,7 +717,7 @@ test "in-place methods" {
     try g.symmetricDifferenceUpdate(h);
 
     try expectEqual(10, g.cardinality());
-    try expect(g.containsAll(&.{ 1, 2, 11, 111, 22, 222, 1111, 333, 3333, 22222 }));
+    try expect(g.containsAllSlice(&.{ 1, 2, 11, 111, 22, 222, 1111, 333, 3333, 22222 }));
 }
 
 test "sizeOf" {
