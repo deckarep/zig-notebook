@@ -16,6 +16,8 @@
 /// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 /// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 /// SOFTWARE.
+///
+///
 const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
@@ -94,6 +96,13 @@ pub fn Set(comptime E: type) type {
                 try self.map.put(el, {});
             }
             return self.map.count() - prevCount;
+        }
+
+        /// Returns the number of total elements which may be present before
+        /// it is no longer guaranteed that no allocations will be performed.
+        pub fn capacity(self: *Self) Size {
+            // Note: map.capacity() requires mutable access, probably an oversight.
+            return self.map.capacity();
         }
 
         /// Cardinality effectively returns the size of the set
@@ -551,6 +560,38 @@ test "basic usage" {
     // subsetOf
 
     // supersetOf
+}
+
+test "clear/capacity" {
+    var a = Set(u32).init(std.testing.allocator);
+    defer a.deinit();
+
+    try expectEqual(0, a.cardinality());
+    try expectEqual(0, a.capacity());
+
+    const cap = 99;
+    var b = try Set(u32).initCapacity(std.testing.allocator, cap);
+    defer b.deinit();
+
+    try expectEqual(0, b.cardinality());
+    try expect(b.capacity() >= cap);
+
+    for (0..cap) |val| {
+        _ = try b.add(@intCast(val));
+    }
+
+    try expectEqual(99, b.cardinality());
+    try expect(b.capacity() >= cap);
+
+    b.clearRetainingCapacity();
+
+    try expectEqual(0, b.cardinality());
+    try expect(b.capacity() >= cap);
+
+    b.clearAndFree();
+    
+    try expectEqual(0, b.cardinality());
+    try expectEqual(b.capacity(), 0);
 }
 
 test "clone" {
