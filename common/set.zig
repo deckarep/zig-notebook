@@ -29,7 +29,7 @@ const Allocator = mem.Allocator;
 /// in a comprehensive set-based data-structure.
 pub fn Set(comptime E: type) type {
     return struct {
-        allocator: std.mem.Allocator,
+        //allocator: std.mem.Allocator,
         map: Map,
 
         const Self = @This();
@@ -42,7 +42,7 @@ pub fn Set(comptime E: type) type {
         pub fn init(allocator: std.mem.Allocator) Self {
             return .{
                 .map = std.AutoHashMap(E, void).init(allocator),
-                .allocator = allocator,
+                //.allocator = allocator,
             };
         }
 
@@ -91,7 +91,7 @@ pub fn Set(comptime E: type) type {
         }
 
         /// Creates a copy of this set, using the same allocator
-        pub fn clone(self: *const Self) Allocator.Error!Self {
+        pub fn clone(self: *Self) Allocator.Error!Self {
             // Take a stack copy of self.
             var cloneSelf = self.*;
             cloneSelf.map = try self.map.clone();
@@ -99,9 +99,16 @@ pub fn Set(comptime E: type) type {
         }
 
         /// Creates a copy of this set, using a specified allocator
-        pub fn cloneWithAllocator(self: *const Self, allocator: Allocator) Allocator.Error!Self {
-            var cloneSelf = try self.clone();
-            cloneSelf.allocator = allocator;
+        pub fn cloneWithAllocator(self: *Self, allocator: Allocator) Allocator.Error!Self {
+            // Since we're borrowing the internal map allocator, temporarily back it up.
+            const prevAllocator = self.map.allocator;
+            // Restore it at the end of the func, because the self.map should use the
+            // original allocator.
+            defer self.map.allocator = prevAllocator;
+
+            // The cloned map must use and refer to the new allocator only.
+            self.map.allocator = allocator;
+            const cloneSelf = try self.clone();
             return cloneSelf;
         }
 
@@ -175,7 +182,7 @@ pub fn Set(comptime E: type) type {
         ///
         /// Caller owns the newly allocated/returned set.
         pub fn intersection(self: Self, other: Self) Allocator.Error!Self {
-            var interSet = Self.init(self.allocator);
+            var interSet = Self.init(self.map.allocator);
 
             // Optimization, iterate over whichever set is smaller.
             // Matters when disparity in cardinality is large.
@@ -331,7 +338,7 @@ pub fn Set(comptime E: type) type {
             if (other.map.count() > n) n = other.map.count();
 
             var uSet = try Self.initCapacity(
-                self.allocator,
+                self.map.allocator,
                 @intCast(n),
             );
 
@@ -465,7 +472,7 @@ test "clone" {
         var b = try a.cloneWithAllocator(tmpAlloc);
         defer b.deinit();
 
-        try expect(a.allocator.ptr != b.allocator.ptr);
+        try expect(a.map.allocator.ptr != b.map.allocator.ptr);
         try expect(a.equals(b));
     }
 }
@@ -571,4 +578,12 @@ test "in-place methods" {
     try c.unionUpdate(d);
     try expectEqual(c.cardinality(), 6);
     try expect(c.containsAll(&.{ 10, 20, 30, 40, 66 }));
+}
+
+test "sizeOf" {
+    // Instead of the Set having it's own allocator it just borrows the internal map.
+    // This is to keep the object size the same as the AudoHashMap.
+    const expectedByteSize = 40;
+    try expectEqual(expectedByteSize, @sizeOf(std.hash_map.AutoHashMap(u32, void)));
+    try expectEqual(expectedByteSize, @sizeOf(Set(u32)));
 }
