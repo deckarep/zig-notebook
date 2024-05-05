@@ -66,14 +66,18 @@ pub fn Set(comptime E: type) type {
             self.* = undefined;
         }
 
-        /// Add adds a single element to the set and an allocation may occur
+        /// Adds a single element to the set and an allocation may occur.
+        /// add may return an Allocator.Error or bool indicating if the element
+        /// was actually added if not already known.
         pub fn add(self: *Self, element: E) Allocator.Error!bool {
             const prevCount = self.map.count();
             try self.map.put(element, {});
             return prevCount != self.map.count();
         }
 
-        /// Appends all elements from the provided slice, and may allocate
+        /// Appends all elements from the provided slice, and may allocate.
+        /// appendSlice returns an Allocator.Error or Size which represents how
+        /// many elements added and not previously in the Set.
         pub fn appendSlice(self: *Self, elements: []const E) Allocator.Error!Size {
             const prevCount = self.map.count();
             for (elements) |el| {
@@ -97,15 +101,18 @@ pub fn Set(comptime E: type) type {
             self.map.clearRetainingCapacity();
         }
 
-        /// Creates a copy of this set, using the same allocator
+        /// Creates a copy of this set, using the same allocator.
+        /// clone may return an Allocator.Error or the cloned Set.
         pub fn clone(self: *Self) Allocator.Error!Self {
             // Take a stack copy of self.
             var cloneSelf = self.*;
+            // Clone the interal map.
             cloneSelf.map = try self.map.clone();
             return cloneSelf;
         }
 
-        /// Creates a copy of this set, using a specified allocator
+        /// Creates a copy of this set, using a specified allocator.
+        /// cloneWithAllocator may be return an Allocator.Error or the cloned Set.
         pub fn cloneWithAllocator(self: *Self, allocator: Allocator) Allocator.Error!Self {
             // Since we're borrowing the internal map allocator, temporarily back it up.
             const prevAllocator = self.map.allocator;
@@ -119,6 +126,11 @@ pub fn Set(comptime E: type) type {
             return cloneSelf;
         }
 
+        /// Returns true when the provided element exists within the Set otherwise false.
+        pub fn contains(self: Self, element: E) bool {
+            return self.map.contains(element);
+        }
+
         /// Returns true when all elements in the provided slice are present otherwise false.
         pub fn containsAll(self: Self, elements: []const E) bool {
             for (elements) |el| {
@@ -127,11 +139,6 @@ pub fn Set(comptime E: type) type {
                 }
             }
             return true;
-        }
-
-        /// Returns true when the provided element exists within the Set otherwise false.
-        pub fn containsOne(self: Self, element: E) bool {
-            return self.map.contains(element);
         }
 
         /// Returns true when at least one or more elements exist within the Set otherwise false.
@@ -144,14 +151,14 @@ pub fn Set(comptime E: type) type {
             return false;
         }
 
-        /// difference returns the difference between this set
+        /// differenceOf returns the difference between this set
         /// and other. The returned set will contain
         /// all elements of this set that are not also
-        /// elements of other.
+        /// elements of the other.
         ///
         /// Caller owns the newly allocated/returned set.
-        pub fn difference(self: Self, other: Self) Allocator.Error!Self {
-            var diffSet = Self.init(self.allocator);
+        pub fn differenceOf(self: Self, other: Self) Allocator.Error!Self {
+            var diffSet = Self.init(self.map.allocator);
 
             var iter = self.map.iterator();
             while (iter.next()) |entry| {
@@ -162,18 +169,48 @@ pub fn Set(comptime E: type) type {
             return diffSet;
         }
 
-        /// equals determines if two sets are equal to each
+        /// differenceUpdate does an in-place mutation of this set
+        /// and other. This set will contain all elements of this set that are not
+        /// also elements of other.
+        pub fn differenceUpdate(self: *Self, other: Self) Allocator.Error!void {
+            // In-place mutation invalidates iterators therefore a temp set is needed.
+            // So instead of a temp set, just invoke the regular full function which
+            // allocates and returns a set then swap out the map internally.
+
+            // Also, this saves a step of not having to possibly discard many elements
+            // from the self set.
+
+            // Just get a new set with the normal method.
+            const diffSet = try self.differenceOf(other);
+
+            // Destroy the internal map.
+            self.map.deinit();
+
+            // Swap it out with the new set.
+            self.map = diffSet.map;
+        }
+
+        fn dump(self: Self) void {
+            std.log.err("\ncardinality: {d}\n", .{self.cardinality()});
+            var iter = self.iterator();
+            while (iter.next()) |el| {
+                std.log.err("  element: {d}\n", .{el.*});
+            }
+        }
+
+        /// eql determines if two sets are equal to each
         /// other. If they have the same cardinality
         /// and contain the same elements, they are
         /// considered equal. The order in which
         /// the elements were added is irrelevant.
-        pub fn equals(self: Self, other: Self) bool {
+        pub fn eql(self: Self, other: Self) bool {
             // First discriminate on cardinalities of both sets.
             if (self.map.count() != other.map.count()) {
                 return false;
             }
 
-            // Now check for each element against the other.
+            // Now check for each element one for one and exit early
+            // on the first non-match.
             var iter = self.map.iterator();
             while (iter.next()) |entry| {
                 if (!other.map.contains(entry.key_ptr.*)) {
@@ -184,14 +221,14 @@ pub fn Set(comptime E: type) type {
             return true;
         }
 
-        /// intersection returns a new set containing only the elements
+        /// intersectionOf returns a new set containing only the elements
         /// that exist only in both sets.
         ///
         /// Caller owns the newly allocated/returned set.
-        pub fn intersection(self: Self, other: Self) Allocator.Error!Self {
+        pub fn intersectionOf(self: Self, other: Self) Allocator.Error!Self {
             var interSet = Self.init(self.map.allocator);
 
-            // Optimization, iterate over whichever set is smaller.
+            // Optimization: iterate over whichever set is smaller.
             // Matters when disparity in cardinality is large.
             var s = other;
             var o = self;
@@ -213,15 +250,16 @@ pub fn Set(comptime E: type) type {
         /// intersectionUpdate does an in-place intersecting update
         /// to the current set from the other set keeping only
         /// elements found in this Set and the other Set.
-        pub fn intersectUpdate(self: *Self, other: Self) Allocator.Error!void {
-            // I'm doing it this way because trying to do an in-place mutation
-            // invalidates the iterators therefore a temp set is needed anyway.
+        pub fn intersectionUpdate(self: *Self, other: Self) Allocator.Error!void {
+            // In-place mutation invalidates iterators therefore a temp set is needed.
+            // So instead of a temp set, just invoke the regular full function which
+            // allocates and returns a set then swap out the map internally.
 
             // Also, this saves a step of not having to possibly discard many elements
             // from the self set.
 
             // Just get a new set with the normal method.
-            const interSet = try self.intersection(other);
+            const interSet = try self.intersectionOf(other);
 
             // Destroy the internal map.
             self.map.deinit();
@@ -231,28 +269,34 @@ pub fn Set(comptime E: type) type {
         }
 
         /// In place style:
-        /// differenceUpdate
-        /// symmetric_difference_update
+        /// differenceOfUpdate
+        /// symmetric_differenceOf_update
         /// Returns true if the set is empty otherwise false
         pub fn isEmpty(self: Self) bool {
             return self.map.count() == 0;
         }
 
-        /// isProperSubset determines if every element in this set is in
+        /// Create an iterator over the elements in the set.
+        /// The iterator is invalidated if the set is modified during iteration.
+        pub fn iterator(self: Self) Iterator {
+            return self.map.keyIterator();
+        }
+
+        /// properSubsetOf determines if every element in this set is in
         /// the other set but the two sets are not equal.
-        pub fn isProperSubset(self: Self, other: Self) bool {
-            return self.map.count() < other.map.count() and self.IsSubset(other);
+        pub fn properSubsetOf(self: Self, other: Self) bool {
+            return self.map.count() < other.map.count() and self.subsetOf(other);
         }
 
-        /// isProperSuperset determines if every element in the other set
+        /// properSupersetOf determines if every element in the other set
         /// is in this set but the two sets are not equal.
-        pub fn isProperSuperset(self: Self, other: Self) bool {
-            return self.map.count() > other.map.count() and self.isSuperset(other);
+        pub fn properSupersetOf(self: Self, other: Self) bool {
+            return self.map.count() > other.map.count() and self.supersetOf(other);
         }
 
-        /// isSubset determines if every element in this set is in
+        /// subsetOf determines if every element in this set is in
         /// the other set.
-        pub fn isSubset(self: Self, other: Self) bool {
+        pub fn subsetOf(self: Self, other: Self) bool {
             // First discriminate on cardinalties of both sets.
             if (self.map.count() > other.map.count()) {
                 return false;
@@ -269,15 +313,11 @@ pub fn Set(comptime E: type) type {
             return true;
         }
 
-        /// isSubset determines if every element in the other Set is in
+        /// subsetOf determines if every element in the other Set is in
         /// the this Set.
-        pub fn isSuperset(self: Self, other: Self) bool {
-            // This is just the converse of isSubset.
-            return other.isSubset(self);
-        }
-
-        pub fn iterator(self: *const Self) Iterator {
-            return self.map.keyIterator();
+        pub fn supersetOf(self: Self, other: Self) bool {
+            // This is just the converse of subsetOf.
+            return other.subsetOf(self);
         }
 
         /// pop removes and returns an arbitrary ?E from the set.
@@ -312,12 +352,12 @@ pub fn Set(comptime E: type) type {
             }
         }
 
-        /// symmetricDifference returns a new set with all elements which are
+        /// symmetricDifferenceOf returns a new set with all elements which are
         /// in either this set or the other set but not in both.
         ///
         /// The caller owns the newly allocated/returned Set.
-        pub fn symmetricDifference(self: Self, other: Self) Allocator.Error!Self {
-            var sdSet = Self.init(self.allocator);
+        pub fn symmetricDifferenceOf(self: Self, other: Self) Allocator.Error!Self {
+            var sdSet = Self.init(self.map.allocator);
 
             var iter = self.map.iterator();
             while (iter.next()) |entry| {
@@ -336,10 +376,30 @@ pub fn Set(comptime E: type) type {
             return sdSet;
         }
 
+        /// symmetricDifferenceUpdate does an in-place mutation with all elements
+        /// which are in either this set or the other set but not in both.
+        pub fn symmetricDifferenceUpdate(self: *Self, other: Self) Allocator.Error!void {
+            // In-place mutation invalidates iterators therefore a temp set is needed.
+            // So instead of a temp set, just invoke the regular full function which
+            // allocates and returns a set then swap out the map internally.
+
+            // Also, this saves a step of not having to possibly discard many elements
+            // from the self set.
+
+            // Just get a new set with the normal method.
+            const sd = try self.symmetricDifferenceOf(other);
+
+            // Destroy the internal map.
+            self.map.deinit();
+
+            // Swap it out with the new set.
+            self.map = sd.map;
+        }
+
         /// union returns a new set with all elements in both sets.
         ///
         /// The caller owns the newly allocated/returned Set.
-        pub fn @"union"(self: Self, other: Self) Allocator.Error!Self {
+        pub fn unionOf(self: Self, other: Self) Allocator.Error!Self {
             // Sniff out larger set for capacity hint.
             var n = self.map.count();
             if (other.map.count() > n) n = other.map.count();
@@ -392,12 +452,12 @@ test "basic usage" {
     _ = try set.appendSlice(&.{ 5, 3, 0, 9 });
 
     // Positive cases.
-    try expect(set.containsOne(8));
+    try expect(set.contains(8));
     try expect(set.containsAll(&.{ 5, 3, 9 }));
     try expect(set.containsAny(&.{ 5, 55, 12 }));
 
     // Negative cases.
-    try expect(!set.containsOne(99));
+    try expect(!set.contains(99));
     try expect(!set.containsAll(&.{ 8, 6, 77 }));
     try expect(!set.containsAny(&.{ 99, 55, 44 }));
 
@@ -414,38 +474,38 @@ test "basic usage" {
 
     _ = try other.appendSlice(&.{ 5, 3, 0, 9 });
 
-    try expect(set.equals(other));
+    try expect(set.eql(other));
     try expectEqual(other.cardinality(), 7);
 
     try expect(other.remove(8));
     try expectEqual(other.cardinality(), 6);
     try expect(!other.remove(55));
-    try expect(!set.equals(other));
+    try expect(!set.eql(other));
 
     other.removeAll(&.{ 6, 7 });
     try expectEqual(other.cardinality(), 4);
 
-    // Intersection
-    var inter = try set.intersection(other);
+    // intersectionOf
+    var inter = try set.intersectionOf(other);
     defer inter.deinit();
     try expect(!inter.isEmpty());
     try expectEqual(inter.cardinality(), 4);
     try expect(inter.containsAll(&.{ 5, 3, 0, 9 }));
 
     // Union
-    var un = try set.@"union"(other);
+    var un = try set.unionOf(other);
     defer un.deinit();
     try expect(!un.isEmpty());
     try expectEqual(un.cardinality(), 7);
     try expect(un.containsAll(&.{ 8, 6, 7, 5, 3, 0, 9 }));
 
-    // Difference
+    // differenceOf
 
-    // Symmetric Difference
+    // Symmetric differenceOf
 
-    // IsSubset
+    // subsetOf
 
-    // IsSuperset
+    // supersetOf
 }
 
 test "clone" {
@@ -458,7 +518,7 @@ test "clone" {
         var b = try a.clone();
         defer b.deinit();
 
-        try expect(a.equals(b));
+        try expect(a.eql(b));
     }
 
     {
@@ -480,7 +540,7 @@ test "clone" {
         defer b.deinit();
 
         try expect(a.map.allocator.ptr != b.map.allocator.ptr);
-        try expect(a.equals(b));
+        try expect(a.eql(b));
     }
 }
 
@@ -504,7 +564,7 @@ test "pop" {
 
 test "subset/superset" {
     {
-        // IsSubSet
+        // subsetOf
         var a = Set(u32).init(std.testing.allocator);
         defer a.deinit();
         _ = try a.appendSlice(&.{ 1, 2, 3, 5, 7 });
@@ -513,16 +573,16 @@ test "subset/superset" {
         defer b.deinit();
 
         // b should be a subset of a.
-        try expect(b.isSubset(a));
+        try expect(b.subsetOf(a));
 
         _ = try b.add(72);
 
         // b should not be a subset of a, because 72 is not in a.
-        try expect(!b.isSubset(a));
+        try expect(!b.subsetOf(a));
     }
 
     {
-        // IsSuperSet
+        // supersetOf
         var a = Set(u32).init(std.testing.allocator);
         defer a.deinit();
         _ = try a.appendSlice(&.{ 9, 5, 2, 1, 11 });
@@ -532,13 +592,13 @@ test "subset/superset" {
         _ = try b.appendSlice(&.{ 5, 2, 11 });
 
         // set a should be a superset of set b
-        try expect(!b.isSuperset(a));
+        try expect(!b.supersetOf(a));
 
         _ = try b.add(42);
 
         // TODO: figure out why this fails.
         //set a should not be a superset of set b because b has 42
-        // try expect(a.isSuperset(&b));
+        // try expect(a.supersetOf(&b));
     }
 }
 
@@ -560,7 +620,7 @@ test "iterator" {
 }
 
 test "in-place methods" {
-    // intersection_update
+    // intersectionUpdate
     var a = Set(u32).init(std.testing.allocator);
     defer a.deinit();
     _ = try a.appendSlice(&.{ 10, 20, 30, 40 });
@@ -569,11 +629,11 @@ test "in-place methods" {
     defer b.deinit();
     _ = try b.appendSlice(&.{ 44, 20, 30, 66 });
 
-    try a.intersectUpdate(b);
+    try a.intersectionUpdate(b);
     try expectEqual(a.cardinality(), 2);
     try expect(a.containsAll(&.{ 20, 30 }));
 
-    // union_update
+    // unionUpdate
     var c = Set(u32).init(std.testing.allocator);
     defer c.deinit();
     _ = try c.appendSlice(&.{ 10, 20, 30, 40 });
@@ -585,6 +645,34 @@ test "in-place methods" {
     try c.unionUpdate(d);
     try expectEqual(c.cardinality(), 6);
     try expect(c.containsAll(&.{ 10, 20, 30, 40, 66 }));
+
+    // differenceUpdate
+    var e = Set(u32).init(std.testing.allocator);
+    defer e.deinit();
+    _ = try e.appendSlice(&.{ 1, 11, 111, 1111, 11111 });
+
+    var f = Set(u32).init(std.testing.allocator);
+    defer f.deinit();
+    _ = try f.appendSlice(&.{ 1, 11, 111, 222, 2222, 1111 });
+
+    try e.differenceUpdate(f);
+
+    try expectEqual(1, e.cardinality());
+    try expect(e.contains(11111));
+
+    // symmetricDifferenceUpdate
+    var g = Set(u32).init(std.testing.allocator);
+    defer g.deinit();
+    _ = try g.appendSlice(&.{ 2, 22, 222, 2222, 22222 });
+
+    var h = Set(u32).init(std.testing.allocator);
+    defer h.deinit();
+    _ = try h.appendSlice(&.{ 1, 11, 111, 333, 3333, 2222, 1111 });
+
+    try g.symmetricDifferenceUpdate(h);
+
+    try expectEqual(10, g.cardinality());
+    try expect(g.containsAll(&.{ 1, 2, 11, 111, 22, 222, 1111, 333, 3333, 22222 }));
 }
 
 test "sizeOf" {
