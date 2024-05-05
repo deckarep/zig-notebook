@@ -60,7 +60,7 @@ defer B.deinit();
 _ = try B.appendSlice(&.{ 50, 30, 20 });
 
 // Get the union of A | B
-var un = try A.@"union"(&B);
+var un = try A.@"union"(B);
 defer un.deinit();
 
 // Grab an iterator and dump the contents.
