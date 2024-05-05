@@ -29,24 +29,31 @@ const Allocator = mem.Allocator;
 /// in a comprehensive set-based data-structure.
 pub fn Set(comptime E: type) type {
     return struct {
-        //allocator: std.mem.Allocator,
+        // NOTE: instead of the extra 16 bytes to keep this around
+        // just piggyback off of the internal map allocator this way
+        // the Set type isn't larger than it needs to be.
+        // See "sizeOf" test-case below.
+        // allocator: std.mem.Allocator,
+
         map: Map,
 
-        const Self = @This();
+        /// The type of the internal hash map
         pub const Map = std.AutoHashMap(E, void);
+        /// The integer type used to store the size of the map
         pub const Size = Map.Size;
         /// The iterator type returned by iterator()
         pub const Iterator = Map.KeyIterator;
 
-        /// Initialzies a Set with the given std.mem.Allocator
+        const Self = @This();
+
+        /// Initialzies a Set with the given Allocator
         pub fn init(allocator: std.mem.Allocator) Self {
             return .{
                 .map = std.AutoHashMap(E, void).init(allocator),
-                //.allocator = allocator,
             };
         }
 
-        /// Initialzies a Set using a capacity hint, with the given std.mem.Allocator
+        /// Initialzies a Set using a capacity hint, with the given Allocator
         pub fn initCapacity(allocator: Allocator, num: Size) Allocator.Error!Self {
             var self = Self.init(allocator);
             try self.map.ensureTotalCapacity(num);
