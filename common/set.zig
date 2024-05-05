@@ -20,6 +20,7 @@ const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 
+/// TODO: support Zig "strings" eventually, doesn't work currently.
 /// fn Set(E) creates a set based on element type E.
 /// This implementation is backed by the std.AutoHashMap implementation
 /// where a Value is not needed and considered to be void and
@@ -445,8 +446,8 @@ test "clone" {
 
         try expect(a.equals(&b));
     }
-    
-     {
+
+    {
         // cloneWithAllocator
         var a = Set(u32).init(std.testing.allocator);
         defer a.deinit();
@@ -460,7 +461,7 @@ test "clone" {
             // Fail test; can't try in defer as defer is executed after we return
             if (deinit_status == .leak) expect(false) catch @panic("TEST FAIL");
         }
-        
+
         var b = try a.cloneWithAllocator(tmpAlloc);
         defer b.deinit();
 
