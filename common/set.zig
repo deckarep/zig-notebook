@@ -35,15 +35,16 @@ pub fn Set(comptime E: type) type {
         // just piggyback off of the internal map allocator this way
         // the Set type isn't larger than it needs to be.
         // See "sizeOf" test-case below.
+
         // allocator: std.mem.Allocator,
 
         map: Map,
 
         /// The type of the internal hash map
         pub const Map = std.AutoHashMap(E, void);
-        /// The integer type used to store the size of the map
+        /// The integer type used to store the size of the map, borrowed from map
         pub const Size = Map.Size;
-        /// The iterator type returned by iterator()
+        /// The iterator type returned by iterator(), key-only for sets
         pub const Iterator = Map.KeyIterator;
 
         const Self = @This();
@@ -237,6 +238,19 @@ pub fn Set(comptime E: type) type {
             while (iter.next()) |el| {
                 std.log.err("  element: {d}\n", .{el.*});
             }
+        }
+
+        /// Increases capacity, guaranteeing that insertions up until the
+        /// `expected_count` will not cause an allocation, and therefore cannot fail.
+        pub fn ensureTotalCapacity(self: *Self, expected_count: Size) Allocator.Error!void {
+            return self.map.ensureTotalCapacity(expected_count);
+        }
+
+        /// Increases capacity, guaranteeing that insertions up until
+        /// `additional_count` **more** items will not cause an allocation, and
+        /// therefore cannot fail.
+        pub fn ensureUnusedCapacity(self: *Self, additional_count: Size) Allocator.Error!void {
+            return self.map.ensureUnusedCapacity(additional_count);
         }
 
         /// eql determines if two sets are equal to each
