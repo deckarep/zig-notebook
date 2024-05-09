@@ -4,3 +4,6 @@
 [submodule "lib/raylib-cimgui"]
 	path = lib/raylib-cimgui
 	url = git@github.com:alfredbaudisch/raylib-cimgui.git
+[submodule "lib/neco"]
+	path = lib/neco
+	url = git@github.com:tidwall/neco.git
