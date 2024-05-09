@@ -38,7 +38,20 @@ pub fn build(b: *std.Build) void {
         // .use_llvm = false,
     });
 
-     // Neco - coroutines
+    exe.addObjectFile(.{ .path = "../lib/raylib-5.0-macos/lib/libraylib.a" });
+    exe.linkFramework("CoreVideo");
+    exe.linkFramework("IOKit");
+    exe.linkFramework("Cocoa");
+    exe.linkFramework("GLUT");
+    exe.linkFramework("OpenGL");
+
+    exe.linkSystemLibrary("c");
+
+    // NOTE: this block is for Raylib(5.0)/Raygui
+    exe.addIncludePath(.{ .path = "../lib/raylib-5.0-macos/include" });
+    exe.addIncludePath(.{ .path = "../lib/raygui/include" });
+
+    // Neco - coroutines
     const necoCFlags = &.{
         "-std=c11",
         "-O0",

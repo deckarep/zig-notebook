@@ -1,72 +1,105 @@
 const std = @import("std");
 const c = @import("c_defs.zig").c;
+const zeco = @import("zeco.zig");
 
-fn p(s: []const u8) void {
-    std.debug.print("HERE: {s}\n", .{s});
-}
+const MAX_BUNNIES = 100_000;
+const SCREEN_WIDTH = 800;
+const SCREEN_HEIGHT = 450;
+
+// This is the maximum amount of elements (quads) per batch
+// NOTE: This value is defined in [rlgl] module and can be changed there
+const MAX_BATCH_ELEMENTS = 8192;
+
+const Bunny = struct {
+    pos: c.Vector2,
+    speed: c.Vector2,
+    color: c.Color,
+};
 
 pub fn main() !void {
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
 
-    // this causes crashing here, when started in a coroutine.
-    _ = c.neco_start(neco_main, 0);
+    //zeco.init();
+    vanilla_bunnymark();
 
     // this works fine
     //neco_main(0, null);
+    std.debug.print("application terminated.", .{});
 }
 
-fn neco_main(_: c_int, _:[*c]?*anyopaque) callconv(.C) void {
-    const N = 100_000;
+fn vanilla_bunnymark() void {
+    c.InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "raylib vanilla bunnymark");
+    defer c.CloseWindow();
+    c.SetTargetFPS(60);
 
-    p("1");
-     // Use a waitgroup to wait for the child coroutines to initialize.
-    var wg: c.neco_waitgroup = std.mem.zeroes(c.neco_waitgroup);
-    _ = c.neco_waitgroup_init(&wg);
-    _ = c.neco_waitgroup_add(&wg, N);
+    const texBunny = c.LoadTexture("resources/textures/wabbit_alpha.png");
+    defer c.UnloadTexture(texBunny);
 
-    p("2");
-    // Start coroutines
-    const start = c.neco_now();
-    for (0..N) |_|{
-        _ = c.neco_start(coro, 1, &wg);
+    // Stack alloc'd bunnies array.
+    var bunnies: [MAX_BUNNIES]Bunny = undefined;
+    var bunniesCount: usize = 0;
+
+    while (!c.WindowShouldClose()) {
+        //----------------------------------------------------------------------------------
+        // Update
+        //----------------------------------------------------------------------------------
+        if (c.IsMouseButtonDown(c.MOUSE_BUTTON_LEFT)) {
+            // Create more bunnies
+            for (0..100) |_| {
+                if (bunniesCount < MAX_BUNNIES) {
+                    bunnies[bunniesCount].pos = c.GetMousePosition();
+                    bunnies[bunniesCount].speed.x = @as(f32, @floatFromInt(c.GetRandomValue(-250, 250))) / 60.0;
+                    bunnies[bunniesCount].speed.y = @as(f32, @floatFromInt(c.GetRandomValue(-250, 250))) / 60.0;
+                    bunnies[bunniesCount].color = .{
+                        .r = @intCast(c.GetRandomValue(50, 240)),
+                        .g = @intCast(c.GetRandomValue(80, 240)),
+                        .b = @intCast(c.GetRandomValue(100, 240)),
+                        .a = 255,
+                    };
+                    bunniesCount += 1;
+                }
+            }
+        }
+
+        // Update bunnies
+        const sw: f32 = @floatFromInt(c.GetScreenWidth());
+        const sh: f32 = @floatFromInt(c.GetScreenHeight());
+        const texW = @as(f32, @floatFromInt(texBunny.width >> 2));
+        const texH = @as(f32, @floatFromInt(texBunny.height >> 2));
+        for (0..bunniesCount) |i| {
+            bunnies[i].pos.x += bunnies[i].speed.x;
+            bunnies[i].pos.y += bunnies[i].speed.y;
+
+            if (((bunnies[i].pos.x + texW) > sw) or
+                ((bunnies[i].pos.x + texW) < 0))
+            {
+                bunnies[i].speed.x *= -1;
+            }
+            if (((bunnies[i].pos.y + texH) > sh) or
+                ((bunnies[i].pos.y + texH - 40) < 0))
+            {
+                bunnies[i].speed.y *= -1;
+            }
+        }
+        
+        //----------------------------------------------------------------------------------
+        // Draw
+        //----------------------------------------------------------------------------------
+        c.BeginDrawing();
+        defer c.EndDrawing();
+
+        c.ClearBackground(c.RAYWHITE);
+
+        for (0..bunniesCount) |i| {
+            const x:c_int = @intFromFloat(bunnies[i].pos.x);
+            const y:c_int = @intFromFloat(bunnies[i].pos.y);
+            c.DrawTexture(texBunny, x, y, bunnies[i].color);
+        }
+
+        c.DrawRectangle(0, 0, SCREEN_WIDTH, 40, c.BLACK);
+        c.DrawText(c.TextFormat("bunnies: %i", bunniesCount), 120, 10, 20, c.GREEN);
+        c.DrawText(c.TextFormat("batched draw calls: %i", 1 + bunniesCount / MAX_BATCH_ELEMENTS), 320, 10, 20, c.MAROON);
+
+        c.DrawFPS(10, 10);
     }
-
-    p("3");
-    // Wait for all coroutines to start
-    _ = c.neco_waitgroup_wait(&wg);
-
-    p("4");
-    const elapsed:i64 = c.neco_now() - start;
-    const fElapsed:f64 = @floatFromInt(elapsed);
-    const fDiv:f64 = 1_000_000.0;
-    // WARNING: adding this line causes this code to crash???
-    // Theories:
-    // 0. Only crashes on debug builds.
-    // 1. The neco code is not quite compatible with Zig (due to the magic)
-    // 2. A bug in neco with stack alignment
-    // 3. A bug on only on macos
-    // 4. Some truly undefined behavior in neco that is somehow showing up.
-
-    // Offending line.
-    // std.log.info("start: {d}, elapsed: {d}\n", .{start, elapsed});
-  
-    // OK
-    _ = c.printf("all started in %f ms\n", fElapsed/fDiv);
 }
-
-fn coro(_: c_int, argv:[*c]?*anyopaque) callconv(.C) void {
-    //p("coro:start");
-    //const num:*usize = @alignCast(@ptrCast(argv[0]));
-    const wg: *c.neco_waitgroup = @alignCast(@ptrCast(argv[0]));
-    //p("coro:a");
-    _ = c.neco_waitgroup_done(wg);
-    //p("coro:b");
-    _ = c.neco_waitgroup_wait(wg);
-    //p("coro:c");
-
-    
-    //std.debug.print("coro started\n", .{});
-    //p("coro:end");
-    //std.debug.print("coro num: {d}, started\n", .{num.*});
-}
-
