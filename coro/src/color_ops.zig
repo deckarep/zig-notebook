@@ -9,10 +9,10 @@ pub fn randColor() c.Color {
     };
 }
 
-pub fn clampColorFloat(val:f32) u8 {
-    var newVal:f32 = val;
-    if(newVal > 255.0) newVal = 255.0;
-    if(newVal < 0.0) newVal = 0.0;
+pub fn clampColorFloat(val: f32) u8 {
+    var newVal: f32 = val;
+    if (newVal > 255.0) newVal = 255.0;
+    if (newVal < 0.0) newVal = 0.0;
     return @intFromFloat(newVal);
 }
 
