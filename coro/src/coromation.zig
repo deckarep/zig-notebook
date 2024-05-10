@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @import("c_defs.zig").c;
+const col_ops = @import("color_ops.zig");
 
 pub const Bunny = struct {
     pos: c.Vector2,
@@ -13,6 +14,7 @@ pub const AsyncCmd = enum(u16) {
     RotateFromTo = 0,
     ScaleFromTo = 1,
     MoveFromTo = 2,
+    ColorTo = 3,
 };
 
 // This is the maximum amount of elements (quads) per batch
@@ -72,6 +74,15 @@ fn async_dispatch(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
             const to: c.Vector2 = @as(*c.Vector2, @alignCast(@ptrCast(argv[4]))).*;
 
             moveFromTo(pBunny, seconds, from, to);
+        },
+        .ColorTo => {
+            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
+            // Since pointers are sent, we immediately deref and copy them for local use.
+            const seconds: f32 = @as(*f32, @alignCast(@ptrCast(argv[2]))).*;
+            const destColor: c.Color = @as(*c.Color, @alignCast(@ptrCast(argv[3]))).*;
+            
+            //std.debug.print(".ColorTo\n", .{});
+            colorTo(pBunny, seconds, destColor);
         },
     }
 }
@@ -139,6 +150,59 @@ fn rotateFromTo(bunny: *Bunny, seconds: f32, start: f32, end: f32) void {
     bunny.rot = end_angle;
 }
 
+fn colorTo_async(bunny: *Bunny, seconds: f32, destColor: c.Color) void {
+    // NOTE: pointers must always be sent, for variadics.
+    const ASYNC_CMD: u16 = @intFromEnum(AsyncCmd.ColorTo);
+    _ = c.neco_start(async_dispatch, 4, &ASYNC_CMD, bunny, &seconds, &destColor);
+}
+
+fn colorTo(bunny: *Bunny, seconds: f32, destColor: c.Color) void {
+    //std.debug.print("colorTo!!!\n", .{});
+    var elapsed_time = c.GetFrameTime();
+
+    const ease_func = ease_linear;
+
+    const startColor = bunny.color;
+
+    const start_r = startColor.r;
+    const start_g = startColor.g;
+    const start_b = startColor.b;
+    const start_a = startColor.a;
+
+    const end_r = destColor.r;
+    const end_g = destColor.g;
+    const end_b = destColor.b;
+    const end_a = destColor.a;
+
+
+    const change_r:f32 = @as(f32, @floatFromInt(end_r)) - @as(f32, @floatFromInt(start_r));
+    const change_g:f32 = @as(f32, @floatFromInt(end_g)) - @as(f32, @floatFromInt(start_g));
+    const change_b:f32 = @as(f32, @floatFromInt(end_b)) - @as(f32, @floatFromInt(start_b));
+    const change_a:f32 = @as(f32, @floatFromInt(end_a)) - @as(f32, @floatFromInt(start_a));
+
+    while (elapsed_time <= seconds) {
+        const new_r = ease_func(elapsed_time, @floatFromInt(start_r), change_r, seconds);
+        const new_g = ease_func(elapsed_time, @floatFromInt(start_g), change_g, seconds);
+        const new_b = ease_func(elapsed_time, @floatFromInt(start_b), change_b, seconds);
+        const new_a = ease_func(elapsed_time, @floatFromInt(start_a), change_a, seconds);
+
+        //std.debug.print("{d}, {d}, {d}, {d}\n", .{new_r, new_g, new_b, new_a});
+
+        bunny.color = .{
+            .r = col_ops.clampColorFloat(new_r),
+            .g = col_ops.clampColorFloat(new_g),
+            .b = col_ops.clampColorFloat(new_b),
+            .a = col_ops.clampColorFloat(new_a),
+        };
+
+        _ = c.neco_yield();
+        elapsed_time = elapsed_time + c.GetFrameTime();
+    }
+
+    // After animation frames set the color to the final and absolute resting place.
+    bunny.color = .{ .r = end_r, .g = end_g, .b = end_b, .a = end_a };
+}
+
 fn moveFromTo_async(bunny: *Bunny, seconds: f32, start: c.Vector2, end: c.Vector2) void {
     // NOTE: pointers must always be sent, for variadics.
     const ASYNC_CMD: u16 = @intFromEnum(AsyncCmd.MoveFromTo);
@@ -195,12 +259,14 @@ fn mov_bunny_a_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     while (true) {
         //rotateFromTo_async(pBunny, DUR_SECONDS, 0.0, 90 * 6);
         //scaleFromTo_async(pBunny, DUR_SECONDS, 1.0, 2.0);
+        colorTo_async(pBunny, DUR_SECONDS,  col_ops.randColor());
         moveFromTo(pBunny, DUR_SECONDS, pBunny.pos, destLoc);
 
         _ = c.neco_sleep(SLEEP_FOR);
 
         //rotateFromTo_async(pBunny, DUR_SECONDS, 90.0 * 6, 0);
-        scaleFromTo_async(pBunny, DUR_SECONDS, 2.0, 1.0);
+        //scaleFromTo_async(pBunny, DUR_SECONDS, 2.0, 1.0);
+        colorTo_async(pBunny, DUR_SECONDS,   col_ops.randColor());
         moveFromTo(pBunny, DUR_SECONDS, pBunny.pos, origLoc);
         _ = c.neco_sleep(SLEEP_FOR);
     }
