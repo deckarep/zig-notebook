@@ -3,6 +3,7 @@ const c = @import("c_defs.zig").c;
 const zeco = @import("zeco.zig");
 const classic = @import("classic_delicious.zig");
 const tacular = @import("coro_tacular.zig");
+const mation = @import("coromation.zig");
 
 const Bunny = @import("bunny.zig").Bunny;
 
@@ -11,13 +12,16 @@ const SCREEN_WIDTH = 800;
 const SCREEN_HEIGHT = 450;
 const BUNNY_BARF_COUNT = 1;
 
+var texBunny: c.Texture = undefined;
+
 const Style = enum {
     ClassicDelicious,
     CoroTacular,
+    Coromation,
 };
 
-const RunStyle = .CoroTacular;
-var texBunny: c.Texture = undefined;
+// Change this variable to one of the enum type above.
+const RunStyle = .Coromation;
 
 pub fn main() !void {
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
@@ -36,6 +40,7 @@ pub fn main() !void {
     switch (RunStyle) {
         .ClassicDelicious => classic.bunnymark(MAX_BUNNIES, BUNNY_BARF_COUNT, texBunny),
         .CoroTacular => tacular.bunnymark(texBunny),
+        .Coromation => mation.coromation(texBunny),
         else => {},
     }
 
