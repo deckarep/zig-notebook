@@ -75,7 +75,7 @@ It does this work over and over in a loop and yields back to the `neco` schedule
     // Grab a pointer to a single bunny.
     const pBunny = &bunnies[bunniesCount];
     
-    / Spawn a coroutine responsible for moving this bunny, passing the bunny
+    // Spawn a coroutine responsible for moving this bunny, passing the bunny
     // and texture by reference as 2 args.
     _ = c.neco_start(bunny_mover_coro, 2, pBunny, pTexBunny);
 ```
