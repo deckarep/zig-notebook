@@ -21,7 +21,7 @@ const Style = enum {
 };
 
 // Change this variable to one of the enum type above.
-const RunStyle = .Coromation;
+const RunStyle = .CoroTacular;
 
 pub fn main() !void {
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});

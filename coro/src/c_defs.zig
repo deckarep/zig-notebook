@@ -3,4 +3,5 @@ pub const c = @cImport({
     @cInclude("rlgl.h");
     // neco coroutine lib
     @cInclude("neco.h");
+    @cInclude("boot_neco.h");
 });

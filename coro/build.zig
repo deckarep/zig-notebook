@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) void {
         //"-Wzero-length-array",
     };
     exe.addIncludePath(.{ .path = "../lib/neco" });
-    //exe.addIncludePath(.{ .path = "../../lib/boot_neco" });
+    exe.addIncludePath(.{ .path = "../lib/boot_neco" });
 
     exe.addCSourceFile(.{
         .file = .{ .path = "../lib/neco/neco.c" },
