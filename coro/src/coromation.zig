@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @import("c_defs.zig").c;
 const col_ops = @import("color_ops.zig");
+const yeasings = @import("yeasings.zig");
 
 pub const Bunny = struct {
     pos: c.Vector2,
@@ -18,6 +19,28 @@ pub const AsyncCmd = enum(u16) {
     AlphaFromTo = 4,
 };
 
+pub const EaseType = enum {
+    Linear,
+    InQuad,
+    OutQuad,
+    InOutQuad,
+    InSine,
+    OutSine,
+    InOutSine,
+};
+
+pub fn EaseFunc(t: EaseType) *const fn (f32, f32, f32, f32) f32 {
+    switch (t) {
+        .Linear => return yeasings.linear,
+        .InQuad => return yeasings.inQuad,
+        .OutQuad => return yeasings.outQuad,
+        .InOutQuad => return yeasings.inOutQuad,
+        .InSine => return yeasings.inSine,
+        .OutSine => return yeasings.outSine,
+        .InOutSine => return yeasings.inOutSine,
+    }
+}
+
 // This is the maximum amount of elements (quads) per batch
 // NOTE: This value is defined in [rlgl] module and can be changed there
 const MAX_BATCH_ELEMENTS = 8192;
@@ -29,29 +52,14 @@ pub fn coromation(texBunny: c.Texture) void {
     _ = c.neco_start(main_coro, 1, &texBunny);
 }
 
-// (time: number, beginning: number, changeInValue: number, duration: number)
-fn ease_linear(tm: f32, beg: f32, chg: f32, dur: f32) f32 {
-    return (chg * tm) / dur + beg;
-}
-
-fn ease_inOutQuint(tm: f32, beg: f32, chg: f32, dur: f32) f32 {
-    var tm_ = tm;
-
-    tm_ /= dur;
-    if ((tm_ / 2) < 1) {
-        return (chg / 2) * tm_ * tm_ * tm_ * tm_ * tm_ + beg;
-    }
-    tm_ -= 2;
-    return (chg / 2) * (tm_ * tm_ * tm_ * tm_ * tm_ + 2) + beg;
-}
-
-fn async_dispatch(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
+fn async_dispatch(argc: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     const cmd: AsyncCmd = @enumFromInt(@as(*u16, @alignCast(@ptrCast(argv[0]))).*);
 
     switch (cmd) {
         .RotateFromTo => {
-            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
+            std.debug.assert(argc == 5);
             // Since pointers are sent, we immediately deref and copy them for local use.
+            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
             const seconds: f32 = @as(*f32, @alignCast(@ptrCast(argv[2]))).*;
             const start: f32 = @as(*f32, @alignCast(@ptrCast(argv[3]))).*;
             const end: f32 = @as(*f32, @alignCast(@ptrCast(argv[4]))).*;
@@ -59,8 +67,9 @@ fn async_dispatch(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
             rotateFromTo(pBunny, seconds, start, end);
         },
         .ScaleFromTo => {
-            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
+            std.debug.assert(argc == 5);
             // Since pointers are sent, we immediately deref and copy them for local use.
+            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
             const seconds: f32 = @as(*f32, @alignCast(@ptrCast(argv[2]))).*;
             const from: f32 = @as(*f32, @alignCast(@ptrCast(argv[3]))).*;
             const to: f32 = @as(*f32, @alignCast(@ptrCast(argv[4]))).*;
@@ -68,8 +77,9 @@ fn async_dispatch(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
             scaleFromTo(pBunny, seconds, from, to);
         },
         .MoveFromTo => {
-            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
+            std.debug.assert(argc == 5);
             // Since pointers are sent, we immediately deref and copy them for local use.
+            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
             const seconds: f32 = @as(*f32, @alignCast(@ptrCast(argv[2]))).*;
             const from: c.Vector2 = @as(*c.Vector2, @alignCast(@ptrCast(argv[3]))).*;
             const to: c.Vector2 = @as(*c.Vector2, @alignCast(@ptrCast(argv[4]))).*;
@@ -77,21 +87,20 @@ fn async_dispatch(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
             moveFromTo(pBunny, seconds, from, to);
         },
         .ColorTo => {
-            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
+            std.debug.assert(argc == 4);
             // Since pointers are sent, we immediately deref and copy them for local use.
+            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
             const seconds: f32 = @as(*f32, @alignCast(@ptrCast(argv[2]))).*;
             const destColor: c.Color = @as(*c.Color, @alignCast(@ptrCast(argv[3]))).*;
 
             colorTo(pBunny, seconds, destColor);
         },
         .AlphaFromTo => {
-            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
+            std.debug.assert(argc == 3);
             // Since pointers are sent, we immediately deref and copy them for local use.
-            const seconds: f32 = @as(*f32, @alignCast(@ptrCast(argv[2]))).*;
-            const from: u8 = @as(*u8, @alignCast(@ptrCast(argv[3]))).*;
-            const to: u8 = @as(*u8, @alignCast(@ptrCast(argv[4]))).*;
-
-            alphaFromTo(pBunny, seconds, from, to);
+            const pBunny: *Bunny = @alignCast(@ptrCast(argv[1]));
+            const args: alphaFromToArgs = @as(*alphaFromToArgs, @alignCast(@ptrCast(argv[2]))).*;
+            alphaFromTo(pBunny, args);
         },
     }
 }
@@ -114,7 +123,7 @@ fn scaleFromTo(bunny: *Bunny, seconds: f32, from: f32, to: f32) void {
     const change_scale = to - from;
 
     var elapsed_time = c.GetFrameTime();
-    const ease_func = ease_linear;
+    const ease_func = yeasings.linear;
 
     while (elapsed_time <= seconds) {
         const new_scale = ease_func(elapsed_time, from, change_scale, seconds);
@@ -146,7 +155,7 @@ fn rotateFromTo(bunny: *Bunny, seconds: f32, start: f32, end: f32) void {
     //const dt = love.timer.getDelta;
     var elapsed_time = c.GetFrameTime();
 
-    const ease_func = ease_linear; // hard-coded for now!
+    const ease_func = yeasings.linear; // hard-coded for now!
     while (elapsed_time <= seconds) {
         const new_angle = ease_func(elapsed_time, start_angle, change_angle, seconds);
         bunny.rot = new_angle;
@@ -169,7 +178,7 @@ fn colorTo(bunny: *Bunny, seconds: f32, destColor: c.Color) void {
     //std.debug.print("colorTo!!!\n", .{});
     var elapsed_time = c.GetFrameTime();
 
-    const ease_func = ease_linear;
+    const ease_func = yeasings.linear;
 
     const startColor = bunny.color;
 
@@ -211,23 +220,30 @@ fn colorTo(bunny: *Bunny, seconds: f32, destColor: c.Color) void {
     bunny.color = .{ .r = end_r, .g = end_g, .b = end_b, .a = end_a };
 }
 
-fn alphaFromTo_async(bunny: *Bunny, seconds: f32, from: u8, to: u8) void {
+const alphaFromToArgs = struct {
+    seconds: f32,
+    from: u8,
+    to: u8,
+    ease: EaseType = .Linear,
+};
+
+fn alphaFromTo_async(bunny: *Bunny, args: alphaFromToArgs) void {
     // NOTE: pointers must always be sent, for variadics.
     const ASYNC_CMD: u16 = @intFromEnum(AsyncCmd.AlphaFromTo);
-    _ = c.neco_start(async_dispatch, 5, &ASYNC_CMD, bunny, &seconds, &from, &to);
+    _ = c.neco_start(async_dispatch, 3, &ASYNC_CMD, bunny, &args);
 }
 
-fn alphaFromTo(bunny: *Bunny, seconds: f32, from: u8, to: u8) void {
+fn alphaFromTo(bunny: *Bunny, args: alphaFromToArgs) void {
     var elapsed_time: f32 = c.GetFrameTime();
 
-    const ease_func = ease_linear; // hard-coded for now!
-    const start_alpha = from;
+    const ease_func = EaseFunc(args.ease);
+    const start_alpha = args.from;
 
-    const end_alpha = to;
+    const end_alpha = args.to;
     const change_a: f32 = @as(f32, @floatFromInt(end_alpha)) - @as(f32, @floatFromInt(start_alpha));
 
-    while (elapsed_time <= seconds) {
-        const new_alpha = ease_func(elapsed_time, @floatFromInt(start_alpha), change_a, seconds);
+    while (elapsed_time <= args.seconds) {
+        const new_alpha = ease_func(elapsed_time, @floatFromInt(start_alpha), change_a, args.seconds);
         bunny.color.a = col_ops.clampColorFloat(new_alpha);
 
         _ = c.neco_yield();
@@ -260,7 +276,7 @@ fn moveFromTo(bunny: *Bunny, seconds: f32, start: c.Vector2, end: c.Vector2) voi
     var elapsed_time = c.GetFrameTime();
 
     //const ease_func = easing.inOutQuint; // hard-coded for now!
-    const ease_func = ease_linear;
+    const ease_func = yeasings.linear;
 
     while (elapsed_time < seconds) {
         const new_x = ease_func(elapsed_time, start_x, change_x, seconds);
@@ -295,7 +311,12 @@ fn mov_bunny_a_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
         //rotateFromTo_async(pBunny, DUR_SECONDS, 0.0, 90 * 6);
         //scaleFromTo_async(pBunny, DUR_SECONDS, 1.0, 2.0);
         //colorTo_async(pBunny, DUR_SECONDS, col_ops.randColor());
-        alphaFromTo_async(pBunny, DUR_SECONDS, 255, 0);
+        alphaFromTo_async(pBunny, .{
+            .seconds = DUR_SECONDS,
+            .from = 255,
+            .to = 0,
+            .ease = .InSine,
+        });
         moveFromTo(pBunny, DUR_SECONDS, pBunny.pos, destLoc);
 
         _ = c.neco_sleep(SLEEP_FOR);
@@ -303,7 +324,12 @@ fn mov_bunny_a_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
         //rotateFromTo_async(pBunny, DUR_SECONDS, 90.0 * 6, 0);
         //scaleFromTo_async(pBunny, DUR_SECONDS, 2.0, 1.0);
         //colorTo_async(pBunny, DUR_SECONDS, col_ops.randColor());
-        alphaFromTo_async(pBunny, DUR_SECONDS, 0, 255);
+        alphaFromTo_async(pBunny, .{
+            .seconds = DUR_SECONDS,
+            .from = 0,
+            .to = 255,
+            .ease = .InOutSine,
+        });
         moveFromTo(pBunny, DUR_SECONDS, pBunny.pos, origLoc);
         _ = c.neco_sleep(SLEEP_FOR);
     }
