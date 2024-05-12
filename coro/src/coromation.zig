@@ -159,8 +159,8 @@ fn rotateFromTo(bunny: *Bunny, seconds: f32, start: f32, end: f32) void {
     while (elapsed_time <= seconds) {
         const new_angle = ease_func(elapsed_time, start_angle, change_angle, seconds);
         bunny.rot = new_angle;
-        _ = c.neco_yield();
 
+        _ = c.neco_yield();
         elapsed_time = elapsed_time + c.GetFrameTime();
     }
 
@@ -298,38 +298,40 @@ fn mov_bunny_a_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     const pBunny: *Bunny = @alignCast(@ptrCast(argv[0]));
     //const pTexBunny: *c.Texture = @alignCast(@ptrCast(argv[1]));
 
-    const DUR_SECONDS = 3.0;
+    const DUR_SECONDS = 1.0;
     const SCREEN_WIDTH: f32 = @floatFromInt(c.GetScreenWidth());
     const SLEEP_FOR = c.NECO_MILLISECOND * 500;
     //const SCREEN_HEIGHT = c.GetScreenHeight();
 
-    pBunny.pos = .{ .x = 10, .y = 60 };
+    const yLoc = 100;
+    const xLoc = 80;
+    pBunny.pos = .{ .x = xLoc, .y = yLoc };
     const origLoc = pBunny.pos;
-    const destLoc = .{ .x = SCREEN_WIDTH - 40, .y = 60 };
+    const destLoc = .{ .x = SCREEN_WIDTH - xLoc, .y = yLoc };
 
     while (true) {
-        //rotateFromTo_async(pBunny, DUR_SECONDS, 0.0, 90 * 6);
-        //scaleFromTo_async(pBunny, DUR_SECONDS, 1.0, 2.0);
-        //colorTo_async(pBunny, DUR_SECONDS, col_ops.randColor());
-        alphaFromTo_async(pBunny, .{
-            .seconds = DUR_SECONDS,
-            .from = 255,
-            .to = 0,
-            .ease = .InSine,
-        });
+        rotateFromTo_async(pBunny, DUR_SECONDS, 0.0, 90 * 8);
+        scaleFromTo_async(pBunny, DUR_SECONDS, 1.0, 2.0);
+        colorTo_async(pBunny, DUR_SECONDS, col_ops.randColor());
+        // alphaFromTo_async(pBunny, .{
+        //     .seconds = DUR_SECONDS,
+        //     .from = 255,
+        //     .to = 0,
+        //     .ease = .InSine,
+        // });
         moveFromTo(pBunny, DUR_SECONDS, pBunny.pos, destLoc);
 
         _ = c.neco_sleep(SLEEP_FOR);
 
         //rotateFromTo_async(pBunny, DUR_SECONDS, 90.0 * 6, 0);
         //scaleFromTo_async(pBunny, DUR_SECONDS, 2.0, 1.0);
-        //colorTo_async(pBunny, DUR_SECONDS, col_ops.randColor());
-        alphaFromTo_async(pBunny, .{
-            .seconds = DUR_SECONDS,
-            .from = 0,
-            .to = 255,
-            .ease = .InOutSine,
-        });
+        colorTo_async(pBunny, DUR_SECONDS, col_ops.randColor());
+        // alphaFromTo_async(pBunny, .{
+        //     .seconds = DUR_SECONDS,
+        //     .from = 0,
+        //     .to = 255,
+        //     .ease = .InOutSine,
+        // });
         moveFromTo(pBunny, DUR_SECONDS, pBunny.pos, origLoc);
         _ = c.neco_sleep(SLEEP_FOR);
     }
@@ -388,46 +390,32 @@ fn main_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
 
         c.ClearBackground(c.RAYWHITE);
 
+        const tw: f32 = @floatFromInt(pTexBunny.width);
+        const th: f32 = @floatFromInt(pTexBunny.height);
+        const hw = tw / 2.0;
+        const hh = th / 2.0;
+
         for (0..bunniesCount) |i| {
             const cb = bunnies[i];
-            // const tw:f32 = @floatFromInt(pTexBunny.width);
-            // const th:f32 = @floatFromInt(pTexBunny.height);
-            //const halfW: f32 = @floatFromInt(pTexBunny.width >> 2);
-            //const halfH: f32 = @floatFromInt(pTexBunny.height >> 2);
-            //const adjustedPos = .{ .x = cb.pos.x - halfW, .y = cb.pos.y - halfH };
 
-            c.rlPushMatrix();
-            defer c.rlPopMatrix();
-
-            c.rlScalef(cb.scale, cb.scale, 1.0);
-            c.rlRotatef(cb.rot, 1.0, 1.0, 1.0);
-            c.DrawTexture(pTexBunny.*, @intFromFloat(cb.pos.x), @intFromFloat(cb.pos.y), cb.color);
-            // c.DrawTextureEx(
-            //     pTexBunny.*,
-            //     adjustedPos,
-            //     cb.rot,
-            //     cb.scale,
-            //     cb.color,
-            // );
-
-            // c.DrawTexturePro(
-            //     pTexBunny.*,
-            //     .{
-            //         .x = 0,
-            //         .y = 0,
-            //         .width = tw,
-            //         .height = th,
-            //     },
-            //     .{
-            //         .x = 0,
-            //         .y = 0,
-            //         .width = tw,
-            //         .height = th,
-            //     },
-            //     adjustedPos,
-            //     cb.rot,
-            //     cb.color,
-            // );
+            c.DrawTexturePro(
+                pTexBunny.*,
+                .{
+                    .x = 0,
+                    .y = 0,
+                    .width = tw,
+                    .height = th,
+                },
+                .{
+                    .x = cb.pos.x,
+                    .y = cb.pos.y,
+                    .width = tw * cb.scale,
+                    .height = th * cb.scale,
+                },
+                .{ .x = hw * cb.scale, .y = hh * cb.scale },
+                cb.rot,
+                cb.color,
+            );
         }
 
         c.DrawRectangle(0, 0, SCREEN_WIDTH, 40, c.BLACK);
