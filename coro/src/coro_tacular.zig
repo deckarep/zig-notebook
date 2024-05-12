@@ -8,10 +8,8 @@ const MAX_BATCH_ELEMENTS = 8192;
 var gameOver = false;
 var coroutineCount: usize = 0;
 
-var deltaAdded: usize = 0;
-const maxBunnies = 50_000;
+const maxBunnies = 100_000;
 var bunnies: [maxBunnies]Bunny = std.mem.zeroes([maxBunnies]Bunny);
-var coroStates: [maxBunnies]bool = std.mem.zeroes([maxBunnies]bool);
 
 pub fn bunnymark(texBunny: c.Texture) void {
     // Kick off the main coroutine which will run the Raylib event loop.
@@ -19,19 +17,14 @@ pub fn bunnymark(texBunny: c.Texture) void {
 }
 
 fn bunny_mover_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
-    _ = c.neco_suspend();
+    //_ = c.neco_suspend();
 
-    const coro_id: usize = @intCast(c.neco_getid());
+    //const coro_id: usize = @intCast(c.neco_getid());
 
     coroutineCount += 1;
 
-    // const pWg: *c.neco_waitgroup = @alignCast(@ptrCast(argv[0]));
-
-    // _ = c.neco_waitgroup_done(pWg);
-    // _ = c.neco_waitgroup_wait(pWg);
-
-    const pBunny: *Bunny = &bunnies[coro_id];
-    const pTexBunny: *c.Texture = @alignCast(@ptrCast(argv[0]));
+    const pBunny: *Bunny = @alignCast(@ptrCast(argv[0]));
+    const pTexBunny: *c.Texture = @alignCast(@ptrCast(argv[1]));
 
     const SCREEN_WIDTH = c.GetScreenWidth();
     const SCREEN_HEIGHT = c.GetScreenHeight();
@@ -43,7 +36,6 @@ fn bunny_mover_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
 
     // This loop is now dedicated to updating a single bunny.
     while (true) {
-        //if (deltaAdded == 0) {
         pBunny.pos.x += pBunny.speed.x;
         pBunny.pos.y += pBunny.speed.y;
 
@@ -57,7 +49,6 @@ fn bunny_mover_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
         {
             pBunny.speed.y *= -1;
         }
-        //}
         _ = c.neco_yield();
     }
 }
@@ -67,9 +58,10 @@ fn bunnymark_game_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
 
     const pTexBunny: *c.Texture = @alignCast(@ptrCast(argv[0]));
 
-    for (0..coroStates.len) |_| {
-        _ = c.neco_start(bunny_mover_coro, 1, pTexBunny);
-    }
+    // Pre-spawn all the coroutines as suspended to start with.
+    // for (maxBunnies) |_| {
+    //     _ = c.neco_start(bunny_mover_coro, 1, pTexBunny);
+    // }
 
     var bunniesCount: usize = 0;
 
@@ -81,16 +73,8 @@ fn bunnymark_game_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
             gameOver = true;
         }
 
-        deltaAdded = 0;
-
         if (c.IsMouseButtonDown(c.MOUSE_BUTTON_LEFT)) {
-            defer deltaAdded = 0;
-            // Barf more bunnies
-
             const BARF_COUNT = 100;
-            // var wg:c.neco_waitgroup = std.mem.zeroes(c.neco_waitgroup);
-            // _ = c.neco_waitgroup_init(&wg);
-            // _ = c.neco_waitgroup_add(&wg, BARF_COUNT);
 
             for (0..BARF_COUNT) |_| {
                 if (bunniesCount < maxBunnies) {
@@ -104,25 +88,19 @@ fn bunnymark_game_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
                         .a = 255,
                     };
 
-                    deltaAdded += 1;
-
                     // This is patched to actually resume later.
                     // Proposed api: neco_resume_later
-                    _ = c.neco_resume(@intCast(bunniesCount));
+                    //_ = c.neco_resume(@intCast(bunniesCount));
 
                     // Grab a pointer to a single bunny.
-                    //const pBunny = &bunnies[bunniesCount];
+                    const pBunny = &bunnies[bunniesCount];
                     // Spawn a coroutine responsible for moving this bunny, passing the bunny
                     // and texture by reference.
-                    //_ = c.neco_start(bunny_mover_coro, 3, pBunny, pTexBunny);
-                    //_ = c.neco_start(bunny_mover_coro, 3, &wg, pBunny, pTexBunny);
+                    _ = c.neco_start(bunny_mover_coro, 2, pBunny, pTexBunny);
 
                     bunniesCount += 1;
                 }
             }
-
-            // Wait for all coros to start.
-            //_ = c.neco_waitgroup_wait(&wg);
         }
 
         // Don't forget to yield the game loop to give all alive coroutines a chance to run.
