@@ -429,7 +429,7 @@ fn mov_bunny_a_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     const destLoc = .{ .x = SCREEN_WIDTH / 2.0, .y = SCREEN_HEIGHT / 2.0 };
 
     // Sleepin creates an interesting delay effect.
-    //_ = c.neco_sleep(c.NECO_MILLISECOND * c.GetRandomValue(100, 300));
+    _ = c.neco_sleep(c.NECO_MILLISECOND * c.GetRandomValue(100, 300));
 
     while (true) {
         // TODO: work through override, cancellation logic eventually.
@@ -504,7 +504,7 @@ fn main_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     }
 
     const SCREEN_WIDTH = c.GetScreenWidth();
-    const maxBunnies = 5;
+    const maxBunnies = 10_000;
 
     const pTexBunny: *c.Texture = @alignCast(@ptrCast(argv[0]));
 
@@ -512,17 +512,18 @@ fn main_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     var bunnies: [maxBunnies]Bunny = undefined;
     var bunniesCount: usize = 0;
 
-    // Create a single bunny
-    for (0..4) |idx| {
-        const i: f32 = @floatFromInt(idx);
+    // Init and spawn bunny threads.
+    for (0..10) |idx| {
         const pBunny = &bunnies[idx];
         initBunny(pBunny);
+
+        const i: f32 = @floatFromInt(idx);
         pBunny.pos.x = pBunny.pos.x + (i * 100.0);
-        bunniesCount += 1;
 
         // Spawn a coroutine responsible for moving this bunny,
         // passing the bunny and texture by reference.
         _ = c.neco_start(mov_bunny_a_coro, 2, pBunny, pTexBunny);
+        bunniesCount += 1;
     }
 
     while (!c.WindowShouldClose() and !gameOver) {
