@@ -5,12 +5,23 @@ const yeasings = @import("yeasings.zig");
 
 var gAlloc: std.mem.Allocator = undefined;
 
+// Not that I'm trying to be just like Defold, but they have these options.
+pub const Playback = enum(u16) {
+    None, // What does None do, maybe it means just not set.
+    OnceForward,
+    OnceBackward,
+    OncePingpong,
+    LoopForward,
+    LoopBackward,
+    LoopPingpong,
+};
+
 pub const Bunny = struct {
     pos: c.Vector2,
     speed: c.Vector2,
     color: c.Color,
     rot: f32 = 0.0,
-    scale: f32 = 1.0,
+    scale: c.Vector2 = .{ 1.0, 1.0 },
 };
 
 pub const AsyncCmd = enum(u16) {
@@ -102,8 +113,8 @@ fn async_dispatch(argc: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
 
 const scaleFromToArgs = struct {
     seconds: f32,
-    from: f32,
-    to: f32,
+    from: c.Vector2,
+    to: c.Vector2,
     ease: EaseType = .Linear,
 
     const Self = @This();
@@ -140,18 +151,18 @@ fn _scaleFromTo(bunny: *Bunny, pArgs: *const scaleFromToArgs) void {
     // defer works with neco coroutines, seems like nothing blowing up so far.
     defer {
         gAlloc.destroy(pArgs);
-        std.debug.print("pArgs destroyed...\n", .{});
     }
 
-    const change_scale = pArgs.to - pArgs.from;
+    const change_scale = c.Vector2Subtract(pArgs.to, pArgs.from);
     var elapsed_time = c.GetFrameTime();
     const ease_func = EaseFunc(pArgs.ease);
 
     while (elapsed_time < pArgs.seconds) {
-        const new_scale = ease_func(elapsed_time, pArgs.from, change_scale, pArgs.seconds);
+        const new_scale_x = ease_func(elapsed_time, pArgs.from.x, change_scale.x, pArgs.seconds);
+        const new_scale_y = ease_func(elapsed_time, pArgs.from.y, change_scale.y, pArgs.seconds);
 
         // NOTE: original implementation had scale for x/y separate.
-        bunny.scale = new_scale;
+        bunny.scale = .{ .x = new_scale_x, .y = new_scale_y };
 
         _ = c.neco_yield();
         elapsed_time = elapsed_time + c.GetFrameTime();
@@ -194,7 +205,6 @@ fn _rotateFromTo(bunny: *Bunny, pArgs: *rotateFromToArgs) void {
     // defer works with neco coroutines, seems like nothing blowing up so far.
     defer {
         gAlloc.destroy(pArgs);
-        std.debug.print("pArgs destroyed...\n", .{});
     }
 
     // Note: all of this works in degrees.
@@ -250,7 +260,6 @@ fn _colorTo(bunny: *Bunny, pArgs: *const colorToArgs) void {
     // defer works with neco coroutines, seems like nothing blowing up so far.
     defer {
         gAlloc.destroy(pArgs);
-        std.debug.print("pArgs destroyed...\n", .{});
     }
 
     var elapsed_time = c.GetFrameTime();
@@ -283,25 +292,46 @@ const alphaFromToArgs = struct {
     from: u8,
     to: u8,
     ease: EaseType = .Linear,
+
+    const Self = @This();
+
+    fn toHeap(self: Self) *Self {
+        const pArgs = gAlloc.create(alphaFromToArgs) catch unreachable;
+        pArgs.* = self; // deref ptr and value-wise copy self.
+
+        return pArgs;
+    }
 };
 
 fn alphaFromTo_async(bunny: *Bunny, args: alphaFromToArgs) void {
+    const pArgs = args.toHeap();
+
     // NOTE: pointers must always be sent, for variadics.
     const ASYNC_CMD: u16 = @intFromEnum(AsyncCmd.AlphaFromTo);
-    _ = c.neco_start(async_dispatch, 3, &ASYNC_CMD, bunny, &args);
+    _ = c.neco_start(async_dispatch, 3, &ASYNC_CMD, bunny, pArgs);
 }
 
 fn alphaFromTo(bunny: *Bunny, args: alphaFromToArgs) void {
+    const pArgs = args.toHeap();
+    _alphaFromTo(bunny, pArgs);
+}
+
+fn _alphaFromTo(bunny: *Bunny, pArgs: *const alphaFromToArgs) void {
+    // defer works with neco coroutines, seems like nothing blowing up so far.
+    defer {
+        gAlloc.destroy(pArgs);
+    }
+
     var elapsed_time: f32 = c.GetFrameTime();
 
-    const ease_func = EaseFunc(args.ease);
-    const start_alpha = args.from;
+    const ease_func = EaseFunc(pArgs.ease);
+    const start_alpha = pArgs.from;
 
-    const end_alpha = args.to;
+    const end_alpha = pArgs.to;
     const change_a: f32 = @as(f32, @floatFromInt(end_alpha)) - @as(f32, @floatFromInt(start_alpha));
 
-    while (elapsed_time <= args.seconds) {
-        const new_alpha = ease_func(elapsed_time, @floatFromInt(start_alpha), change_a, args.seconds);
+    while (elapsed_time <= pArgs.seconds) {
+        const new_alpha = ease_func(elapsed_time, @floatFromInt(start_alpha), change_a, pArgs.seconds);
         bunny.color.a = col_ops.clampColorFloat(new_alpha);
 
         _ = c.neco_yield();
@@ -346,7 +376,6 @@ fn _moveFromTo(bunny: *Bunny, pArgs: *const moveFromToArgs) void {
     // defer works with neco coroutines, seems like nothing blowing up so far.
     defer {
         gAlloc.destroy(pArgs);
-        std.debug.print("pArgs destroyed...\n", .{});
     }
 
     // Moves a bunny from start to end points
@@ -364,7 +393,7 @@ fn _moveFromTo(bunny: *Bunny, pArgs: *const moveFromToArgs) void {
     var elapsed_time = c.GetFrameTime();
 
     //const ease_func = easing.inOutQuint; // hard-coded for now!
-    const ease_func = yeasings.inOutSine;
+    const ease_func = EaseFunc(pArgs.ease);
 
     while (elapsed_time < pArgs.seconds) {
         const new_x = ease_func(elapsed_time, start_x, change_x, pArgs.seconds);
@@ -391,26 +420,37 @@ fn mov_bunny_a_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     //const SLEEP_FOR = c.NECO_MILLISECOND * 500;
     const SCREEN_HEIGHT: f32 = @floatFromInt(c.GetScreenHeight());
 
-    const yLoc = 100;
-    const xLoc = 80;
-    pBunny.pos = .{ .x = xLoc, .y = yLoc };
-    pBunny.scale = 1.0;
+    // const yLoc = 100;
+    // const xLoc = 80;
+    // pBunny.pos = .{ .x = xLoc, .y = yLoc };
+
     const origLoc = pBunny.pos;
+    const origScale = pBunny.scale;
     const destLoc = .{ .x = SCREEN_WIDTH / 2.0, .y = SCREEN_HEIGHT / 2.0 };
 
-    while (true) {
-        //colorTo_async(pBunny, DUR_SECONDS, col_ops.randColor());
+    // Sleepin creates an interesting delay effect.
+    //_ = c.neco_sleep(c.NECO_MILLISECOND * c.GetRandomValue(100, 300));
 
-        colorTo_async(pBunny, .{
+    while (true) {
+        // TODO: work through override, cancellation logic eventually.
+        //      - this is important for things like PingPong (asumming I do it)
+        // TODO: color and alpha interfere, break them out for finer control.
+        // colorTo_async(pBunny, .{
+        //     .seconds = DUR_SECONDS,
+        //     .to = col_ops.randColor(),
+        //     .ease = .InOutSine,
+        // });
+        alphaFromTo_async(pBunny, .{
             .seconds = DUR_SECONDS,
-            .to = col_ops.randColor(),
+            .from = 255, // TODO: it's clear to me that this should take (0.0 - 1.0)
+            .to = 128, // (0.0 - 1.0)
             .ease = .InOutSine,
         });
 
         scaleFromTo_async(pBunny, .{
             .seconds = DUR_SECONDS,
-            .from = 1.0,
-            .to = 3.0,
+            .from = origScale,
+            .to = .{ .x = 3.0, .y = 3.0 },
             .ease = .InOutSine,
         });
 
@@ -436,40 +476,6 @@ fn mov_bunny_a_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     //     _ = c.neco_yield();
     // }
 
-    //rotateFromTo_async(pBunny, DUR_SECONDS, 0.0, 90 * 8);
-    //colorTo_async(pBunny, DUR_SECONDS, col_ops.randColor());
-    // alphaFromTo_async(pBunny, .{
-    //     .seconds = DUR_SECONDS,
-    //     .from = 255,
-    //     .to = 0,
-    //     .ease = .InSine,
-    // });
-    // moveFromTo(pBunny, .{
-    //     .seconds = DUR_SECONDS,
-    //     .start = pBunny.pos,
-    //     .end = destLoc,
-    //     .ease = .InOutSine,
-    // });
-
-    // _ = c.neco_sleep(DUR_SECONDS);
-
-    //rotateFromTo_async(pBunny, DUR_SECONDS, 90.0 * 6, 0);
-    //scaleFromTo_async(pBunny, DUR_SECONDS, 2.0, 1.0);
-    //colorTo_async(pBunny, DUR_SECONDS, col_ops.randColor());
-    // alphaFromTo_async(pBunny, .{
-    //     .seconds = DUR_SECONDS,
-    //     .from = 0,
-    //     .to = 255,
-    //     .ease = .InOutSine,
-    // });
-    // moveFromTo(pBunny, .{
-    //     .seconds = DUR_SECONDS,
-    //     .start = pBunny.pos,
-    //     .end = origLoc,
-    //     .ease = .InOutSine,
-    // });
-    //_ = c.neco_sleep(DUR_SECONDS*20);
-    //}
     std.debug.print("animation routine done.\n", .{});
 }
 
@@ -484,7 +490,7 @@ fn initBunny(pBunny: *Bunny) void {
         .a = 255,
     };
     pBunny.rot = 0.0;
-    pBunny.scale = 1.0;
+    //pBunny.scale = 1.0;
 }
 
 fn main_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
@@ -507,13 +513,17 @@ fn main_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     var bunniesCount: usize = 0;
 
     // Create a single bunny
-    const pBunny = &bunnies[0];
-    initBunny(pBunny);
-    bunniesCount += 1;
+    for (0..4) |idx| {
+        const i: f32 = @floatFromInt(idx);
+        const pBunny = &bunnies[idx];
+        initBunny(pBunny);
+        pBunny.pos.x = pBunny.pos.x + (i * 100.0);
+        bunniesCount += 1;
 
-    // Spawn a coroutine responsible for moving this bunny,
-    // passing the bunny and texture by reference.
-    _ = c.neco_start(mov_bunny_a_coro, 2, pBunny, pTexBunny);
+        // Spawn a coroutine responsible for moving this bunny,
+        // passing the bunny and texture by reference.
+        _ = c.neco_start(mov_bunny_a_coro, 2, pBunny, pTexBunny);
+    }
 
     while (!c.WindowShouldClose() and !gameOver) {
         //----------------------------------------------------------------------------------
@@ -554,15 +564,13 @@ fn main_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
                 .{
                     .x = cb.pos.x,
                     .y = cb.pos.y,
-                    .width = tw * cb.scale,
-                    .height = th * cb.scale,
+                    .width = tw * cb.scale.x,
+                    .height = th * cb.scale.y,
                 },
-                .{ .x = hw * cb.scale, .y = hh * cb.scale },
+                .{ .x = hw * cb.scale.x, .y = hh * cb.scale.y },
                 cb.rot,
                 cb.color,
             );
-
-            c.DrawText(c.TextFormat("scale: %.00f", cb.scale), 20, 400, 20, c.RED);
         }
 
         var stats: c.neco_stats = undefined;
