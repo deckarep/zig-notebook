@@ -6,10 +6,10 @@ const Bunny = @import("bunny.zig").Bunny;
 // NOTE: This value is defined in [rlgl] module and can be changed there
 const MAX_BATCH_ELEMENTS = 8192;
 var gameOver = false;
-var coroutineCount: usize = 0;
 
 const maxBunnies = 100_000;
 var bunnies: [maxBunnies]Bunny = std.mem.zeroes([maxBunnies]Bunny);
+var exiting: bool = false;
 
 pub fn bunnymark(texBunny: c.Texture) void {
     // Kick off the main coroutine which will run the Raylib event loop.
@@ -17,12 +17,6 @@ pub fn bunnymark(texBunny: c.Texture) void {
 }
 
 fn bunny_mover_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
-    //_ = c.neco_suspend();
-
-    //const coro_id: usize = @intCast(c.neco_getid());
-
-    coroutineCount += 1;
-
     const pBunny: *Bunny = @alignCast(@ptrCast(argv[0]));
     const pTexBunny: *c.Texture = @alignCast(@ptrCast(argv[1]));
 
@@ -35,7 +29,7 @@ fn bunny_mover_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
     const texH = @as(f32, @floatFromInt(pTexBunny.height >> 2));
 
     // This loop is now dedicated to updating a single bunny.
-    while (true) {
+    while (!exiting) {
         pBunny.pos.x += pBunny.speed.x;
         pBunny.pos.y += pBunny.speed.y;
 
@@ -121,10 +115,16 @@ fn bunnymark_game_coro(_: c_int, argv: [*c]?*anyopaque) callconv(.C) void {
             c.DrawTexture(pTexBunny.*, x, y, bunnies[i].color);
         }
 
+        var stats: c.neco_stats = undefined;
+        _ = c.neco_getstats(&stats);
+
         c.DrawRectangle(0, 0, SCREEN_WIDTH, 40, c.BLACK);
         c.DrawText(c.TextFormat("bunnies: %i", bunniesCount), 120, 10, 20, c.GREEN);
-        c.DrawText(c.TextFormat("batched draw calls: %i, coroutines: %i", 1 + bunniesCount / MAX_BATCH_ELEMENTS, coroutineCount), 320, 10, 20, c.MAROON);
+        c.DrawText(c.TextFormat("batched draw calls: %i, coroutines: %i", 1 + bunniesCount / MAX_BATCH_ELEMENTS, stats.coroutines), 320, 10, 20, c.MAROON);
 
         c.DrawFPS(10, 10);
     }
+
+    exiting = true;
+    std.debug.print("waiting on cleanup...", .{});
 }
